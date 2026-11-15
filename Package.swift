@@ -15,6 +15,11 @@ let package = Package(
             swiftSettings: [.defaultIsolation(MainActor.self)],
             // Sparkle.framework is embedded in GlassUsage.app/Contents/Frameworks by Scripts/build-app.sh.
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
-        )
+        ),
+        .testTarget(
+            name: "GlassUsageTests",
+            dependencies: ["GlassUsage"],
+            path: "Tests/GlassUsageTests"
+        ),
     ]
 )

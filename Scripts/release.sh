@@ -87,7 +87,7 @@ cask "glassusage" do
 
   url "https://github.com/$REPO/releases/download/v#{version}/GlassUsage-#{version}.zip"
   name "GlassUsage"
-  desc "Claude and Codex plan limits and token spend in the menu bar"
+  desc "Coding agent plan limits and token spend in the menu bar"
   homepage "https://github.com/$REPO"
 
   livecheck do

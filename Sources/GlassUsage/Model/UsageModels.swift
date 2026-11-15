@@ -1,7 +1,7 @@
 import Foundation
 
 nonisolated enum ProviderID: String, Codable, CaseIterable, Identifiable, Sendable {
-    case claude, codex
+    case claude, codex, antigravity, muse
 
     var id: String { rawValue }
 
@@ -9,13 +9,8 @@ nonisolated enum ProviderID: String, Codable, CaseIterable, Identifiable, Sendab
         switch self {
         case .claude: "Claude"
         case .codex: "Codex"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .claude: "sparkle"
-        case .codex: "chevron.left.forwardslash.chevron.right"
+        case .antigravity: "Antigravity"
+        case .muse: "Muse Code"
         }
     }
 
@@ -23,6 +18,8 @@ nonisolated enum ProviderID: String, Codable, CaseIterable, Identifiable, Sendab
         switch self {
         case .claude: "Sign in with Claude Code (run `claude`) to see your plan limits."
         case .codex: "Sign in with Codex (run `codex`) using your ChatGPT account."
+        case .antigravity: "Sign in with the Antigravity CLI (run `agy`) to see your plan limits."
+        case .muse: "Sign in with Muse Code (run `muse login`) on a Muse Code subscription."
         }
     }
 }
@@ -36,8 +33,11 @@ nonisolated struct UsageWindow: Codable, Hashable, Identifiable, Sendable {
     let percent: Double
     let resetsAt: Date?
     let duration: TimeInterval
+    /// Model group the window belongs to, for providers that meter groups separately
+    /// (Antigravity: "Gemini", "Claude and GPT"). Nil for account-wide windows.
+    var group: String? = nil
 
-    var id: String { key }
+    var id: String { group.map { "\($0)/\(key)" } ?? key }
     var fraction: Double { min(max(percent / 100, 0), 1) }
     var windowStart: Date? { resetsAt.map { $0.addingTimeInterval(-duration) } }
 
@@ -57,12 +57,24 @@ nonisolated struct UsageWindow: Codable, Hashable, Identifiable, Sendable {
 nonisolated struct ProviderSnapshot: Codable, Hashable, Sendable {
     let provider: ProviderID
     let plan: String?
-    /// Account-wide windows, shortest first (session, weekly, monthly).
+    /// Windows shortest first (session, weekly, monthly); grouped windows keep the provider's group order.
     let windows: [UsageWindow]
     let fetchedAt: Date
 
     /// The window closest to blocking the user.
     var mostConstrained: UsageWindow? { windows.max { $0.percent < $1.percent } }
+
+    /// Group names in the provider's order; empty when the windows are account-wide.
+    var groups: [String] {
+        var seen = Set<String>()
+        return windows.compactMap(\.group).filter { seen.insert($0).inserted }
+    }
+
+    /// The windows the menu bar ring draws: the group holding the most constrained window, or all of them.
+    var iconWindows: [UsageWindow] {
+        guard let group = mostConstrained?.group else { return windows }
+        return windows.filter { $0.group == group }
+    }
 }
 
 nonisolated enum ProviderError: LocalizedError, Sendable {
@@ -73,6 +85,8 @@ nonisolated enum ProviderError: LocalizedError, Sendable {
     case malformed(String)
     case noQuota(ProviderID)
     case network(String)
+    /// A provider CLI that reports limits for GlassUsage exited with an error.
+    case commandFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -83,6 +97,7 @@ nonisolated enum ProviderError: LocalizedError, Sendable {
         case .malformed(let what): "Unexpected response: \(what)."
         case .noQuota(let id): "\(id.displayName) did not report plan limits for this account."
         case .network(let message): message
+        case .commandFailed(let message): message
         }
     }
 

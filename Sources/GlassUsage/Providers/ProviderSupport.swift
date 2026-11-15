@@ -53,6 +53,7 @@ nonisolated enum Shell {
     struct Output: Sendable {
         let status: Int32
         let stdout: String
+        let stderr: String
     }
 
     /// Runs a process off the main actor; kills it after `timeout`.
@@ -65,8 +66,9 @@ nonisolated enum Shell {
         if let cwd { process.currentDirectoryURL = cwd }
         if let environment { process.environment = environment }
         let stdout = Pipe()
+        let stderr = Pipe()
         process.standardOutput = stdout
-        process.standardError = FileHandle.nullDevice
+        process.standardError = stderr
         process.standardInput = FileHandle.nullDevice
         try process.run()
 
@@ -74,10 +76,15 @@ nonisolated enum Shell {
             try await Task.sleep(for: .seconds(timeout))
             if process.isRunning { process.terminate() }
         }
+        // Drain both pipes at once so a chatty stderr can't fill its buffer and stall the process.
+        let errorHandle = stderr.fileHandleForReading
+        let errors = Task.detached { errorHandle.readDataToEndOfFile() }
         let data = stdout.fileHandleForReading.readDataToEndOfFile()
+        let errorData = await errors.value
         process.waitUntilExit()
         watchdog.cancel()
-        return Output(status: process.terminationStatus, stdout: String(decoding: data, as: UTF8.self))
+        return Output(status: process.terminationStatus, stdout: String(decoding: data, as: UTF8.self),
+                      stderr: String(decoding: errorData, as: UTF8.self))
     }
 
     /// Resolves a CLI the way the user's terminal would (nvm, Homebrew, ~/.local/bin…).
@@ -95,5 +102,22 @@ nonisolated enum Shell {
         let path = output.stdout.split(separator: "\n").last.map(String.init)?.trimmingCharacters(in: .whitespaces)
         guard let path, path.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: path) else { return nil }
         return path
+    }
+}
+
+/// Limits read through a provider's own CLI (`agy -p /usage`, `muse usage`): the CLI owns the
+/// sign-in and its refresh, so GlassUsage never touches the credentials.
+nonisolated enum ProviderCLI {
+    /// Maps a failed run to "not signed in" when the CLI says so, otherwise to its first error line.
+    static func failure(_ provider: ProviderID, command: String, output: Shell.Output) -> ProviderError {
+        let text = output.stderr + "\n" + output.stdout
+        let lowered = text.lowercased()
+        let signInPhrases = ["not logged in", "not signed in", "log in", "sign in", "login", "unauthenticated", "authentication required"]
+        if signInPhrases.contains(where: lowered.contains) { return .notSignedIn(provider) }
+        let line = text.split(whereSeparator: \.isNewline).lazy
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty && !$0.hasPrefix("{") }
+        guard let line else { return .commandFailed("`\(command)` failed (exit \(output.status)).") }
+        return .commandFailed("`\(command)` failed: \(line.prefix(120))")
     }
 }

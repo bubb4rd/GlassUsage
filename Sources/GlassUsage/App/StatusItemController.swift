@@ -64,16 +64,14 @@ final class StatusItemController: NSObject {
 
     private func updateButton() {
         guard let button = statusItem.button else { return }
-        let settings = store.settings
-        let provider = settings.isEnabled(settings.menuBarProvider) ? settings.menuBarProvider : settings.enabledProviders.first
+        let provider = store.menuBarProvider
         let state = provider.map { store.state(for: $0) }
         let snapshot = state?.snapshot
 
-        let stale = snapshot.map { Date.now.timeIntervalSince($0.fetchedAt) > 30 * 60 } ?? true
         let worst = snapshot?.mostConstrained
-        button.image = StatusIcon.image(fraction: worst?.fraction, dimmed: stale || state?.error != nil)
+        button.image = StatusIcon.image(for: state)
 
-        if settings.showPercentInMenuBar, let worst {
+        if store.settings.showPercentInMenuBar, let worst {
             button.attributedTitle = NSAttributedString(
                 string: " \(Int(worst.percent.rounded()))%",
                 attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)])
@@ -84,7 +82,7 @@ final class StatusItemController: NSObject {
     }
 
     private static func tooltip(_ snapshot: ProviderSnapshot) -> String {
-        let parts = snapshot.windows.map { "\($0.title) \(Int($0.percent.rounded()))%" }
+        let parts = snapshot.windows.map { "\($0.group.map { "\($0) " } ?? "")\($0.title) \(Int($0.percent.rounded()))%" }
         return "\(snapshot.provider.displayName): " + parts.joined(separator: " · ")
     }
 
@@ -232,7 +230,8 @@ final class StatusItemController: NSObject {
         guard size.width > 0, size.height > 0 else { return }
         panel.contentSizeHint = size
         let screen = statusItem.button?.window?.screen ?? NSScreen.main
-        panel.place(contentSize: size, centerX: anchor.x, top: anchor.y, within: screen?.visibleFrame ?? .zero)
+        panel.place(contentSize: size, centerX: anchor.x, top: anchor.y, within: screen?.visibleFrame ?? .zero,
+                    animated: panel.isVisible)
     }
 }
 

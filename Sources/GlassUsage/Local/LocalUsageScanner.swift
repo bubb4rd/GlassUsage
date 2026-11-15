@@ -86,6 +86,7 @@ actor LocalUsageScanner {
         return [
             (.claudeCode, claudeRoots),
             (.codexCLI, [codexHome.appending(path: "sessions"), codexHome.appending(path: "archived_sessions")]),
+            (.museCode, [MuseProvider.sessionsDirectory]),
             (.omp, [home.appending(path: ".omp/agent/sessions")]),
         ]
     }
@@ -98,6 +99,7 @@ actor LocalUsageScanner {
                                                                   options: [.skipsHiddenFiles]) else { continue }
             for case let url as URL in enumerator where url.pathExtension == "jsonl" {
                 if source == .codexCLI && !url.lastPathComponent.hasPrefix("rollout-") { continue }
+                if source == .museCode && url.lastPathComponent != "session.jsonl" { continue }
                 guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true,
                       let mtime = values.contentModificationDate, mtime >= cutoff,
                       let size = values.fileSize else { continue }
@@ -114,6 +116,8 @@ actor LocalUsageScanner {
         guard let data = try? Data(contentsOf: file.url, options: .alwaysMapped) else { return state }
         var codex = state.codex ?? LogParsers.CodexState()
         let stem = file.url.deletingPathExtension().lastPathComponent
+        // Muse Code names the session's directory, not the file.
+        let sessionDir = file.url.deletingLastPathComponent().lastPathComponent
         let needles = LogParsers.needles(for: source)
 
         // Recording only what was consumed means a half-written last line is read next time.
@@ -123,6 +127,7 @@ actor LocalUsageScanner {
             case .claudeCode: LogParsers.claudeCode(json)
             case .omp: LogParsers.omp(json)
             case .codexCLI: LogParsers.codex(json, state: &codex, fileStem: stem)
+            case .museCode: LogParsers.muse(json, sessionID: sessionDir)
             }
             if let entry { state.entries.append(entry) }
         }

@@ -1,6 +1,6 @@
 # How GlassUsage works
 
-GlassUsage has no account or server of its own. It reads what Claude Code and Codex already keep on your Mac, and it asks Anthropic and OpenAI for your current plan limits.
+GlassUsage has no account or server of its own. It reads what Claude Code, Codex, Antigravity and Muse Code already keep on your Mac, and it asks each provider (directly or through its own CLI) for your current plan limits.
 
 ## Plan limits
 
@@ -8,10 +8,14 @@ GlassUsage has no account or server of its own. It reads what Claude Code and Co
 | --- | --- | --- |
 | Claude | `GET api.anthropic.com/api/oauth/usage` | Claude Code's Keychain item `Claude Code-credentials` (read through `/usr/bin/security`), falling back to `~/.claude/.credentials.json` |
 | Codex | `GET chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json` (`$CODEX_HOME` and `chatgpt_base_url` are honored) |
+| Antigravity | `agy -p /usage --output-format json` | The Antigravity CLI's own sign-in; GlassUsage never sees it |
+| Muse Code | `muse usage --json` (with `MUSE_NO_AUTO_UPDATE=1`) | The Muse Code CLI's own sign-in; GlassUsage never sees it |
 
 - GlassUsage only reads these credentials. It never stores, refreshes or rewrites them.
 - When the Claude access token has expired, GlassUsage runs `claude -p /usage` (at most once every 5 minutes) so that Claude Code renews its own token. That is a local command and makes no model request.
-- Both endpoints are undocumented and may change. GlassUsage shows exactly the windows the provider reports and never estimates a limit.
+- Antigravity and Muse Code keep their logins in the Keychain under their own access lists, so GlassUsage asks their CLIs instead. Both commands report the allowance without running a model turn or spending quota.
+- Antigravity meters model groups separately (Gemini, Claude and GPT, Gemini 4 Argon), each with its own 5-hour and weekly window, so the panel shows one row per group and the menu bar follows the group closest to its limit.
+- None of these endpoints or commands is a documented API, and they may change. GlassUsage shows exactly the windows the provider reports and never estimates a limit.
 
 ## Token spend
 
@@ -21,7 +25,10 @@ Spend is read from local session logs in the same way as [ccusage](https://githu
 | --- | --- | --- |
 | Claude Code | `~/.claude/projects/**/*.jsonl`, `~/.config/claude/projects` (or `$CLAUDE_CONFIG_DIR`) | Deduplicated by message id + request id |
 | Codex CLI | `$CODEX_HOME/sessions/**/rollout-*.jsonl`, `archived_sessions` | Cumulative `token_count` deltas; replayed history in forked sessions is skipped |
+| Muse Code | `$XDG_DATA_HOME/muse/sessions/**/session.jsonl` (default `~/.local/share`, or `$MUSE_SESSIONS_DIR`) | `model_completed` events only, deduplicated by stream id + sequence; subagent transcripts are read on their own |
 | omp | `~/.omp/agent/sessions/**/*.jsonl` | Uses the cost omp recorded; `anthropic` counts toward Claude, `openai`/`openai-codex` toward Codex |
+
+Antigravity stores conversations in a binary format without token counts, so it has limits but no spend.
 
 - Only logs changed in the last 30 days are read, and each log is parsed incrementally from where the previous scan stopped.
 - Parsed entries are cached in `~/Library/Application Support/GlassUsage/local-usage-cache.plist`.
@@ -36,7 +43,7 @@ GlassUsage connects to:
 - `raw.githubusercontent.com`, for the LiteLLM price list
 - `github.com`, for update checks (Sparkle appcast and downloads)
 
-It has no analytics or telemetry.
+Antigravity and Muse Code limits are fetched by their own CLIs, which talk to Google and Meta. GlassUsage has no analytics or telemetry.
 
 ## Files on disk
 

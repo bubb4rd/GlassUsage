@@ -15,6 +15,8 @@ enum Theme {
     static let s2 = dynamic(0xEB6834, 0xD95926)  // orange
     static let s3 = dynamic(0x1BAF7A, 0x199E70)  // green
     static let s4 = dynamic(0xEDA100, 0xC98500)  // amber
+    static let s5 = dynamic(0x7B5BD6, 0x8C6CE6)  // violet
+    static let s6 = dynamic(0x0E9AAE, 0x16A8BC)  // teal
     static let accent = dynamic(0xEB6834, 0xEB6834)
 
     // Status bands.
@@ -28,6 +30,8 @@ enum Theme {
         switch provider {
         case .claude: s2
         case .codex: s1
+        case .antigravity: s6
+        case .muse: s5
         }
     }
 
@@ -96,25 +100,6 @@ struct Dot: View {
     }
 }
 
-/// Thin rounded meter on a neutral track.
-struct Meter: View {
-    let fraction: Double
-    let color: Color
-    var height: CGFloat = 5
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Theme.track)
-                Capsule().fill(color)
-                    .frame(width: proxy.size.width * min(max(fraction, 0.015), 1))
-            }
-        }
-        .frame(height: height)
-        .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: fraction)
-    }
-}
-
 /// Square icon button with a hover fill. `active` marks a toggle that's on.
 struct IconButton: View {
     let symbol: String
@@ -144,28 +129,35 @@ struct IconButton: View {
 }
 
 /// TokenHell's compact segmented control: a tinted track with a raised selected pill.
+/// `symbols` adds an SF Symbol in front of an option's label.
 struct PillPicker<Value: Hashable>: View {
     let options: [(value: Value, label: String)]
     @Binding var selection: Value
+    var symbols: [Value: String] = [:]
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(options, id: \.value) { option in
                 let selected = option.value == selection
                 Button { selection = option.value } label: {
-                    Text(option.label)
-                        .font(.system(size: 11.5, weight: selected ? .semibold : .regular))
-                        .foregroundStyle(selected ? .primary : .secondary)
-                        .padding(.horizontal, 9)
-                        .frame(height: 22)
-                        .background {
-                            if selected {
-                                RoundedRectangle(cornerRadius: 7)
-                                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.9))
-                                    .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
-                            }
+                    HStack(spacing: 4) {
+                        if let symbol = symbols[option.value] {
+                            Image(systemName: symbol).font(.system(size: 9.5))
                         }
-                        .contentShape(Rectangle())
+                        Text(option.label)
+                    }
+                    .font(.system(size: 11.5, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? .primary : .secondary)
+                    .padding(.horizontal, 9)
+                    .frame(height: 22)
+                    .background {
+                        if selected {
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.9))
+                                .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : [])

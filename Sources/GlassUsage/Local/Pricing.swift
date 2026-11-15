@@ -24,7 +24,9 @@ nonisolated struct PricingTable: Codable, Sendable {
         if let price = prices[undated] { return price }
         // Longest catalog id that prefixes the model ("gpt-5.1-codex-max-high" → "gpt-5.1-codex-max").
         let match = prices.keys.filter { undated.hasPrefix($0) }.max { $0.count < $1.count }
-        return match.flatMap { prices[$0] }
+        if let match { return prices[match] }
+        // A cached catalog from before a family was added still prices it from the built-in table.
+        return fetchedAt == nil ? nil : Self.builtIn.price(for: model)
     }
 
     /// API-equivalent cost, or nil when the model isn't in the catalog.
@@ -67,9 +69,12 @@ nonisolated struct PricingTable: Codable, Sendable {
         }
         var prices: [String: ModelPrice] = [:]
         for (key, value) in catalog {
-            let id = key.lowercased()
-            // Only the families local agent logs contain; bare ids only (no "bedrock/…" variants).
-            guard !id.contains("/"), id.hasPrefix("claude-") || id.hasPrefix("gpt-") || id.hasPrefix("codex") || id.hasPrefix("o3") || id.hasPrefix("o4"),
+            // Only the families local agent logs contain. Bare ids only (no "bedrock/…" variants), except
+            // Muse models, which LiteLLM lists only as "meta/muse-…".
+            var id = key.lowercased()
+            if id.hasPrefix("meta/muse-") { id.removeFirst("meta/".count) }
+            guard !id.contains("/"),
+                  ["claude-", "gpt-", "codex", "o3", "o4", "muse-"].contains(where: id.hasPrefix),
                   let entry = value as? [String: Any],
                   let input = entry["input_cost_per_token"] as? Double,
                   let output = entry["output_cost_per_token"] as? Double else { continue }
@@ -103,6 +108,14 @@ nonisolated struct PricingTable: Codable, Sendable {
             "gpt-5.1-codex-mini": p(0.25, 2, 0.025, 0.25, 0.25),
             "gpt-5.1": p(1.25, 10, 0.125, 1.25, 1.25),
             "gpt-5": p(1.25, 10, 0.125, 1.25, 1.25),
+            // Meta's list prices; Muse has no cache-write tariff, so writes bill as input.
+            "muse-spark-1.3": p(1.25, 4.25, 0.15, 1.25, 1.25),
+            "muse-spark-1.3-contributor": p(0.1, 0.2, 0.002, 0.1, 0.1),
+            "muse-spark-1.2": p(1.25, 4.25, 0.15, 1.25, 1.25),
+            "muse-spark-1.2-contributor": p(0.1, 0.2, 0.002, 0.1, 0.1),
+            "muse-spark-1.1": p(1.25, 4.25, 0.15, 1.25, 1.25),
+            "muse-wonder-1.0": p(4, 20, 0.2, 4, 4),
+            "muse-ember-1.0": p(0.1, 0.5, 0.004, 0.1, 0.1),
         ], fetchedAt: nil)
     }()
 }

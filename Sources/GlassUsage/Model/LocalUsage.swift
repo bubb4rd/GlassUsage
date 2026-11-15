@@ -2,12 +2,13 @@ import Foundation
 
 /// Agent tools whose local session logs GlassUsage reads for token counts.
 nonisolated enum LocalSource: String, Codable, CaseIterable, Sendable {
-    case claudeCode, codexCLI, omp
+    case claudeCode, codexCLI, museCode, omp
 
     var displayName: String {
         switch self {
         case .claudeCode: "Claude Code"
         case .codexCLI: "Codex CLI"
+        case .museCode: "Muse Code"
         case .omp: "omp"
         }
     }
@@ -174,7 +175,8 @@ nonisolated struct SpendSummary: Sendable {
 }
 
 nonisolated enum ModelNames {
-    /// "claude-opus-5-5-20260101" → "Opus 5.5", "gpt-5.1-codex-max" → "GPT-5.1 Codex Max".
+    /// "claude-opus-5-5-20260101" → "Opus 5.5", "gpt-5.1-codex-max" → "GPT-5.1 Codex Max",
+    /// "muse-spark-1.3-contributor" → "Muse Spark 1.3 Contributor".
     static func display(_ model: String) -> String {
         var id = model.lowercased()
         if let slash = id.lastIndex(of: "/") { id = String(id[id.index(after: slash)...]) }
@@ -190,6 +192,9 @@ nonisolated enum ModelNames {
             let parts = id.dropFirst("gpt-".count).split(separator: "-")
             guard let version = parts.first else { return model }
             return (["GPT-\(version)"] + parts.dropFirst().map { $0.capitalized }).joined(separator: " ")
+        }
+        if id.hasPrefix("muse-") {
+            return id.split(separator: "-").map { $0.first?.isNumber == true ? String($0) : $0.capitalized }.joined(separator: " ")
         }
         return model
     }

@@ -8,6 +8,7 @@ nonisolated enum LogParsers {
         switch source {
         case .claudeCode, .omp: [Array(#""usage""#.utf8)]
         case .codexCLI: [Array("token_count".utf8), Array("turn_context".utf8), Array("session_meta".utf8)]
+        case .museCode: [Array("model_completed".utf8)]
         }
     }
 
@@ -64,6 +65,41 @@ nonisolated enum LogParsers {
             if id.hasPrefix("gpt-") || id.contains("codex") { return .codex }
             return nil
         }
+    }
+
+    // MARK: Muse Code ($XDG_DATA_HOME/muse/sessions/YYYY/MM/DD/<session>/session.jsonl)
+
+    /// Counts `model_completed` events only; a parent session's workflow aggregates repeat what
+    /// its `subagent/*/session.jsonl` transcripts already record.
+    static func muse(_ json: JSON, sessionID: String) -> UsageEntry? {
+        let event = json["payload"]["event"]
+        let usage = event["usage"]
+        guard event["kind"].string == "model_completed", usage.exists, let model = event["model"].string,
+              let recordedAt = json["recorded_at"].double, let at = museDate(recordedAt) else { return nil }
+        // Cached tokens are a subset of input and reasoning rides inside output, as with OpenAI.
+        let input = usage["input_tokens"].int
+        let cached = min(usage["cache_read_tokens"].exists ? usage["cache_read_tokens"].int : usage["cached_tokens"].int, input)
+        let tokens = TokenCounts(input: input - cached, output: usage["output_tokens"].int,
+                                 cacheRead: cached, cacheWrite: usage["cache_write_tokens"].int)
+        guard tokens.total > 0 else { return nil }
+        // `sequence` is the stream's stable ordinal, so a replayed record yields the same key.
+        let stream = json["stream"]["id"].string ?? sessionID
+        let ordinal = json["sequence"].double.map { String(Int($0)) } ?? String(Int(recordedAt))
+        let key = "muse:\(stream):\(ordinal):\(tokens.input):\(tokens.output):\(tokens.cacheRead):\(tokens.cacheWrite)"
+        return UsageEntry(key: key, at: at, provider: .muse, source: .museCode, model: model, tokens: tokens,
+                          cacheWrite1h: 0, recordedCost: nil)
+    }
+
+    /// `recorded_at` is microseconds today; accept milliseconds and seconds so a unit change can't
+    /// land usage in 1970 or the far future.
+    private static func museDate(_ raw: Double) -> Date? {
+        let seconds: Double = switch raw {
+        case 1e15...: raw / 1e6
+        case 1e12...: raw / 1e3
+        case 1e9...: raw
+        default: 0
+        }
+        return seconds > 0 ? Date(timeIntervalSince1970: seconds) : nil
     }
 
     // MARK: Codex CLI (~/.codex/sessions/**/rollout-*.jsonl)

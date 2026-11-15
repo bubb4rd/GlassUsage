@@ -45,9 +45,15 @@ final class GlassPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
+    /// Height changes (spend on/off, range, Settings) animate the window and the SwiftUI content together.
+    static let resizeDuration: TimeInterval = 0.25
+
     func setContent<Content: View>(_ view: Content) {
-        let hosting = NSHostingView(rootView: view)
+        // Pinned to the top and clipped, so a resizing window reveals or hides the bottom edge
+        // instead of re-centering the content on every frame.
+        let hosting = NSHostingView(rootView: view.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
         hosting.sizingOptions = []
+        hosting.clipsToBounds = true
         hosting.frame = glass.bounds
         hosting.autoresizingMask = [.width, .height]
         glass.contentView = hosting
@@ -60,15 +66,20 @@ final class GlassPanel: NSPanel {
     }
 
     /// Sizes the window around `contentSize` with the glass's top edge at `top`, centered on `centerX`,
-    /// kept inside `bounds`.
-    func place(contentSize: CGSize, centerX: CGFloat, top: CGFloat, within bounds: NSRect) {
+    /// kept inside `bounds`. `animated` grows or shrinks it from the top edge.
+    func place(contentSize: CGSize, centerX: CGFloat, top: CGFloat, within bounds: NSRect, animated: Bool) {
         let insets = Self.shadowInsets
         var glassX = centerX - contentSize.width / 2
         glassX = min(max(glassX, bounds.minX + 8), bounds.maxX - contentSize.width - 8)
         let frame = NSRect(x: glassX - insets.left, y: top - contentSize.height - insets.bottom,
                            width: contentSize.width + insets.left + insets.right,
                            height: contentSize.height + insets.top + insets.bottom)
-        setFrame(frame, display: true)
+        guard animated, frame != self.frame else { return setFrame(frame, display: true) }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.resizeDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            animator().setFrame(frame, display: true)
+        }
     }
 
     func present() {

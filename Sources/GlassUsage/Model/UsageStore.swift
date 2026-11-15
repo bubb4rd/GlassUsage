@@ -24,6 +24,16 @@ final class UsageStore {
         states[provider] ?? ProviderState()
     }
 
+    /// The provider the menu bar shows: the chosen one while it has a reading, otherwise the first
+    /// enabled provider that does, otherwise the first enabled one.
+    var menuBarProvider: ProviderID? {
+        let enabled = settings.enabledProviders
+        let withReading = enabled.filter { states[$0]?.snapshot != nil }
+        if withReading.contains(settings.menuBarProvider) { return settings.menuBarProvider }
+        if let first = withReading.first { return first }
+        return enabled.contains(settings.menuBarProvider) ? settings.menuBarProvider : enabled.first
+    }
+
     func start() {
         loop?.cancel()
         loop = Task { [weak self] in
@@ -87,6 +97,8 @@ final class UsageStore {
             switch provider {
             case .claude: return .success(try await ClaudeProvider.fetch())
             case .codex: return .success(try await CodexProvider.fetch())
+            case .antigravity: return .success(try await AntigravityProvider.fetch())
+            case .muse: return .success(try await MuseProvider.fetch())
             }
         } catch let error as ProviderError {
             return .failure(error)
