@@ -18,7 +18,7 @@ Requires macOS 26 (Tahoe) or later. Apple silicon and Intel are both supported.
 
 ## What it shows
 
-- **Menu bar:** one capsule meter per limit window (session on top, weekly below) and the percentage of the window closest to its limit. Pick Claude or Codex in Settings.
+- **Menu bar:** the GlassUsage mark plus the percentage used of whichever limit is closest to running out. The mark dims when the reading is stale. Pick Claude or Codex in Settings. Logo sources are in `docs/logo/`.
 - **Limits:** a ring per window (5-hour session, week, or Codex's month), the time left until it resets, and the reset's clock time. Rings are green below 50%, yellow from 50%, orange from 75% and red from 90%.
 - **Spend** (toggle with **$**), for Today, 7d or 30d:
   - Tokens burned and the API-equivalent cost.

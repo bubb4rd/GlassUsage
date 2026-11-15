@@ -65,10 +65,9 @@ final class StatusItemController: NSObject {
         let provider = settings.isEnabled(settings.menuBarProvider) ? settings.menuBarProvider : settings.enabledProviders.first
         let state = provider.map { store.state(for: $0) }
         let snapshot = state?.snapshot
-        let windows = snapshot?.windows ?? []
 
         let stale = snapshot.map { Date.now.timeIntervalSince($0.fetchedAt) > 30 * 60 } ?? true
-        button.image = StatusIcon.image(fractions: windows.map(\.fraction), dimmed: stale || state?.error != nil)
+        button.image = StatusIcon.image(dimmed: stale || state?.error != nil)
 
         if settings.showPercentInMenuBar, let worst = snapshot?.mostConstrained {
             button.attributedTitle = NSAttributedString(
