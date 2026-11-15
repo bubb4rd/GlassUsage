@@ -9,7 +9,7 @@ A native SwiftUI menu bar app for macOS 26. It uses Liquid Glass and a data-firs
 ## Install
 
 1. Download `GlassUsage-<version>.zip` from [Releases](../../releases/latest), unzip it, and move **GlassUsage.app** to Applications.
-2. Open it. The release is signed and notarized by Apple, so it opens without a warning. It shows up in the menu bar, not the Dock.
+2. Open it. It shows up in the menu bar, not the Dock. Releases are signed with a Developer ID. If a release isn't notarized yet, macOS blocks the first launch: open **System Settings → Privacy & Security** and click **Open Anyway**, or run `xattr -dr com.apple.quarantine /Applications/GlassUsage.app`.
 3. Be signed in to at least one of:
    - **Claude Code** (`claude`), with a Pro, Max, Team or Enterprise plan.
    - **Codex CLI** (`codex`), signed in with ChatGPT.
@@ -70,7 +70,7 @@ swift run                     # or run unbundled while developing
 
 ### Releasing
 
-`Scripts/release.sh` takes the version from `Support/Info.plist`. It builds a universal app, signs it with your *Developer ID Application* certificate (hardened runtime), notarizes and staples it, and publishes `GlassUsage-<version>.zip` plus its SHA-256 as a GitHub release. It needs a notarytool keychain profile named `notary` (override with `NOTARY_PROFILE`):
+`Scripts/release.sh` takes the version from `Support/Info.plist`. It builds a universal app, signs it with your *Developer ID Application* certificate (hardened runtime), notarizes and staples it, and publishes `GlassUsage-<version>.zip` plus its SHA-256 as a GitHub release. Running it again for an existing version replaces the assets. `--no-notarize` skips notarization. Notarizing needs a notarytool keychain profile named `notary` (override with `NOTARY_PROFILE`):
 
 ```sh
 xcrun notarytool store-credentials notary --apple-id <you@example.com> --team-id <TEAMID>
