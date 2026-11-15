@@ -1,90 +1,113 @@
-# GlassUsage
+<p align="center">
+  <a href="https://github.com/bubb4rd/GlassUsage"><img src="docs/icon.png" alt="GlassUsage" width="128" height="128"></a>
+</p>
 
-Your Claude and Codex plan limits, plus the tokens you burn, in the macOS menu bar.
+<h1 align="center">GlassUsage</h1>
 
-<p align="center"><img src="docs/screenshot.png" width="408" alt="GlassUsage panel: session, weekly and monthly limit rings for Claude and Codex, then today's tokens, API-equivalent cost, daily bars, token mix and top models"></p>
+<p align="center">
+  <a href="https://github.com/bubb4rd/GlassUsage/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/bubb4rd/GlassUsage?label=Version&color=4a7fd4"></a>
+  <a href="https://github.com/bubb4rd/GlassUsage/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/bubb4rd/GlassUsage/total?label=Downloads&color=2193d9"></a>
+  <img alt="macOS 26+" src="https://img.shields.io/badge/macOS-26%2B-000?logo=apple">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-fad318"></a>
+</p>
 
-A native SwiftUI menu bar app for macOS 26. It uses Liquid Glass and a data-first layout modeled on [TokenHell](https://github.com/ghostpengu/tokenhell). It has no account or server of its own: it reuses the Claude Code and Codex sign-ins already on your Mac.
+<p align="center">Your Claude and Codex plan limits, plus the tokens you burn, one click away in the menu bar.</p>
+
+<p align="center"><img src="docs/demo.gif" width="480" alt="GlassUsage panel: session and weekly limit rings, then token spend for today, 7 days and 30 days, and Settings"></p>
+
+GlassUsage is a native Liquid Glass menu bar app for macOS. It shows how much of your session and weekly limits you've used and when each one resets, so you're never surprised mid-task. Optionally, it also shows how many tokens you've burned and what they would cost at API prices.
+
+It has no account or server of its own: it reuses the Claude Code and Codex sign-ins already on your Mac, and it never stores your credentials.
 
 ## Install
 
-1. Download `GlassUsage-<version>.zip` from [Releases](../../releases/latest), unzip it, and move **GlassUsage.app** to Applications.
-2. Open it. It shows up in the menu bar, not the Dock. Releases are signed with a Developer ID. If a release isn't notarized yet, macOS blocks the first launch: open **System Settings → Privacy & Security** and click **Open Anyway**, or run `xattr -dr com.apple.quarantine /Applications/GlassUsage.app`.
-3. Be signed in to at least one of:
-   - **Claude Code** (`claude`), with a Pro, Max, Team or Enterprise plan.
-   - **Codex CLI** (`codex`), signed in with ChatGPT.
+GlassUsage runs on macOS 26 (Tahoe) or later, on Apple silicon and Intel.
 
-Requires macOS 26 (Tahoe) or later. Apple silicon and Intel are both supported.
+**Homebrew**
 
-## What it shows
+```sh
+brew install --cask bubb4rd/tap/glassusage
+```
 
-- **Menu bar:** the GlassUsage mark plus the percentage used of whichever limit is closest to running out. The mark dims when the reading is stale. Pick Claude or Codex in Settings. Logo sources are in `docs/logo/`.
-- **Limits:** a ring per window (5-hour session, week, or Codex's month), the time left until it resets, and the reset's clock time. Rings are green below 50%, yellow from 50%, orange from 75% and red from 90%.
-- **Spend** (toggle with **$**), for Today, 7d or 30d:
-  - Tokens burned and the API-equivalent cost.
-  - Daily bars stacked by provider.
-  - The token mix: input, output, cache read and cache write.
-  - The top models.
-- **Opening it:** click the menu bar icon, or turn on *Open on hover* to peek. Right-click the icon for Refresh, Settings and Quit.
-- **Keys:** ⌘R refreshes, ⌘, opens Settings, ⌘Q quits and Esc closes.
+**Manual download**
 
-## How it gets the data
+1. Download `GlassUsage-<version>.zip` from the [latest release](https://github.com/bubb4rd/GlassUsage/releases/latest) and unzip it.
+2. Move **GlassUsage.app** to Applications and open it. It's signed and notarized by Apple, so it opens without a warning.
+3. Look for a small ring and a percentage in the menu bar. There's no Dock icon.
 
-| Provider | Limits | Credentials |
-|---|---|---|
-| Claude | `GET api.anthropic.com/api/oauth/usage` | Claude Code's Keychain item `Claude Code-credentials` (read through `/usr/bin/security`), falling back to `~/.claude/.credentials.json` |
-| Codex | `GET chatgpt.com/backend-api/wham/usage` | `~/.codex/auth.json` (`$CODEX_HOME` and `chatgpt_base_url` are honored) |
+To check a download, compare its SHA-256 with the `.sha256` file published next to it:
 
-GlassUsage only reads these credentials; it never stores, refreshes or rewrites them. When the Claude access token has expired, it runs `claude -p /usage` (at most once every 5 minutes) so that Claude Code renews its own token. That is a local command and makes no model request. Both usage endpoints are undocumented and may change.
+```sh
+shasum -a 256 GlassUsage-1.0.1.zip
+```
 
-Token spend is read from local session logs, the same way [ccusage](https://github.com/ryoppippi/ccusage) does it:
+### Before you start
 
-| Tool | Logs | Notes |
-|---|---|---|
-| Claude Code | `~/.claude/projects/**/*.jsonl`, `~/.config/claude/projects` (or `$CLAUDE_CONFIG_DIR`) | Deduplicated by message id + request id |
-| Codex CLI | `$CODEX_HOME/sessions/**/rollout-*.jsonl`, `archived_sessions` | Cumulative `token_count` deltas; replayed history in forked sessions is skipped |
-| omp | `~/.omp/agent/sessions/**/*.jsonl` | Uses the cost omp recorded; `anthropic` counts toward Claude, `openai`/`openai-codex` toward Codex |
+GlassUsage reads limits from the tools you already use. Sign in to at least one:
 
-Costs are API-equivalent list prices from [LiteLLM's catalog](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json), not what a subscription bills you. The catalog is refreshed daily, and a built-in table covers offline use. Only logs changed in the last 30 days are read, and each one is parsed incrementally from where the previous scan stopped.
+- **Claude Code:** run `claude` and sign in with a Pro, Max, Team or Enterprise plan.
+- **Codex CLI:** run `codex` and sign in with ChatGPT.
 
-### Privacy
+### Updating
 
-The app connects to three places:
-- `api.anthropic.com`, for Claude limits.
-- `chatgpt.com`, for Codex limits.
-- `raw.githubusercontent.com`, for the price list.
+GlassUsage updates itself. It checks GitHub for new releases and asks before installing. To check now, open Settings and click **Check for Updates**, or right-click the menu bar icon. Homebrew installs update the same way.
 
-Logs, parsed totals and settings stay in `~/Library/Application Support/GlassUsage` and the app's preferences. There is no analytics or telemetry.
+### Uninstalling
+
+Quit GlassUsage (right-click the icon → Quit) and delete it from Applications, or run `brew uninstall --cask glassusage`. To also remove its settings and cache, run `brew uninstall --zap --cask glassusage`, or delete the files listed under [Files on disk](docs/how-it-works.md#files-on-disk).
+
+## Features
+
+- **Session and weekly limits:** a ring per window, with the time until it resets and the exact reset time. Codex plans with a monthly window show that instead. Rings turn yellow at 50%, orange at 75% and red at 90%.
+- **Menu bar at a glance:** a ring filled to whichever limit is closest to running out, with its percentage next to it. It dims when the reading is stale.
+- **Token spend** (toggle with **$**): tokens burned today, over 7 days and over 30 days, with what they would cost at API prices, daily bars, the token mix (input, output, cache), and your top models.
+- **Reads local logs:** spend comes from Claude Code, Codex CLI and omp session logs, parsed incrementally like [ccusage](https://github.com/ryoppippi/ccusage).
+- **Out of your way:** click to open, or turn on *Open on hover* to peek. ⌘R refreshes, ⌘, opens Settings, Esc closes.
+- **Launch at login**, a selectable refresh interval, and automatic updates.
+
+## Privacy
+
+- **Credentials:** read from Claude Code's Keychain item and Codex's `auth.json`. GlassUsage never stores, refreshes or rewrites them.
+- **Logs:** your session logs are read on your Mac and never uploaded.
+- **Network:** only Anthropic and OpenAI (for your limits) and GitHub (for prices and updates). No analytics or telemetry.
+
+See [How it works](docs/how-it-works.md) for the exact endpoints, files and formulas.
+
+## FAQ
+
+**Why are the costs so high on a subscription?**
+Spend shows what the same tokens would cost on the pay-per-token API. Your plan doesn't bill per token. Treat it as a way to compare days and models, not as a bill.
+
+**A provider shows "Sign in with Claude Code…" instead of rings.**
+Sign in with `claude` or `codex` in Terminal, then click refresh (⌘R).
+
+**Is this official?**
+No. GlassUsage is an independent project and is not affiliated with Anthropic or OpenAI. It uses the same undocumented usage endpoints as Claude Code and Codex, and those can change. Updates will follow when they do.
 
 ## Build from source
 
 Requires macOS 26 and Xcode 26 (Swift 6.2).
 
 ```sh
-git clone https://github.com/bubb4rd/GlassUsage.git && cd GlassUsage
-Scripts/build-app.sh --open   # universal build/GlassUsage.app, ad-hoc signed, then launches it
-swift run                     # or run unbundled while developing
+git clone https://github.com/bubb4rd/GlassUsage.git
+cd GlassUsage
+Scripts/build-app.sh --open    # universal build/GlassUsage.app, ad-hoc signed, then launches it
 ```
 
-*Launch at login* only works from the `.app` bundle.
+`swift run` also works while developing, but *Launch at login* and updates only work from the `.app` bundle.
 
-### Releasing
+Maintainers: see [Releasing](docs/releasing.md).
 
-`Scripts/release.sh` takes the version from `Support/Info.plist`. It builds a universal app, signs it with your *Developer ID Application* certificate (hardened runtime), notarizes and staples it, and publishes `GlassUsage-<version>.zip` plus its SHA-256 as a GitHub release. Running it again for an existing version replaces the assets. `--no-notarize` skips notarization. Notarizing needs a notarytool keychain profile named `notary` (override with `NOTARY_PROFILE`):
+## Contributing
 
-```sh
-xcrun notarytool store-credentials notary --apple-id <you@example.com> --team-id <TEAMID>
-```
-
-The app icon is generated by `swift Scripts/make-icon.swift`.
+Bug reports and pull requests are welcome. Please include your macOS version and which provider (Claude or Codex) is involved. To report a security issue, see [SECURITY.md](SECURITY.md).
 
 ## Credits
 
-- Layout and visual language: [TokenHell](https://github.com/ghostpengu/tokenhell) by ghostpengu.
-- Log parsing approach: [ccusage](https://github.com/ryoppippi/ccusage). Prices: [LiteLLM](https://github.com/BerriAI/litellm).
+- Visual language: [TokenHell](https://github.com/ghostpengu/tokenhell) by ghostpengu
+- Log parsing approach: [ccusage](https://github.com/ryoppippi/ccusage); prices: [LiteLLM](https://github.com/BerriAI/litellm)
+- Updates: [Sparkle](https://sparkle-project.org)
 - Provider marks: [Simple Icons](https://simpleicons.org) (CC0). Claude is a trademark of Anthropic, and Codex and the OpenAI logo are trademarks of OpenAI.
-
-GlassUsage is an unofficial project and is not affiliated with or endorsed by Anthropic or OpenAI.
 
 ## License
 
