@@ -2,8 +2,11 @@ import SwiftUI
 
 struct SettingsView: View {
     let store: UsageStore
+    let updater: Updater
     let onBack: () -> Void
     let onQuit: () -> Void
+
+    @State private var autoUpdates = false
 
     var body: some View {
         @Bindable var settings = store.settings
@@ -64,12 +67,24 @@ struct SettingsView: View {
                     }
                     divider
                     row("Launch at login") { Toggle("Launch at login", isOn: $settings.launchAtLogin) }
+                    if updater.isAvailable {
+                        divider
+                        row("Update automatically") {
+                            Toggle("Update automatically", isOn: $autoUpdates)
+                                .onChange(of: autoUpdates) { _, value in updater.automaticallyChecks = value }
+                        }
+                        divider
+                        row("Version \(Updater.versionString)") {
+                            Button("Check for Updates") { updater.checkForUpdates() }
+                                .controlSize(.small)
+                        }
+                    }
                 }
                 note("Token spend comes from Claude Code, Codex CLI and omp logs on this Mac, priced with LiteLLM's public list.")
             }
 
             HStack {
-                Text("GlassUsage 1.0 · logs stay on this Mac")
+                Text("GlassUsage \(Updater.versionString) · logs stay on this Mac")
                     .font(.system(size: 11)).foregroundStyle(.tertiary)
                 Spacer()
                 Button("Quit", action: onQuit)
@@ -84,6 +99,7 @@ struct SettingsView: View {
         .controlSize(.mini)
         .tint(Theme.good)
         .labelsHidden()
+        .onAppear { autoUpdates = updater.automaticallyChecks }
     }
 
     private func status(_ provider: ProviderID) -> String? {

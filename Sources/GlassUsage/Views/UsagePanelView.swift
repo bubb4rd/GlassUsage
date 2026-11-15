@@ -3,6 +3,7 @@ import SwiftUI
 /// The drop-down panel. Data first: the numbers lead and every label is small and quiet.
 struct UsagePanelView: View {
     let store: UsageStore
+    let updater: Updater
     @Bindable var model: PanelModel
     let onSizeChange: (CGSize) -> Void
     let onQuit: () -> Void
@@ -13,7 +14,7 @@ struct UsagePanelView: View {
         TimelineView(.periodic(from: .now, by: 15)) { context in
             Group {
                 if model.showingSettings {
-                    SettingsView(store: store, onBack: { model.showingSettings = false }, onQuit: onQuit)
+                    SettingsView(store: store, updater: updater, onBack: { model.showingSettings = false }, onQuit: onQuit)
                 } else {
                     main(now: context.date)
                 }

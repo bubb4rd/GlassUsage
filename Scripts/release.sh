@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
-# Builds, signs, notarizes and publishes a GitHub release.
+# Builds, signs, notarizes and publishes a release, then updates the Sparkle feed and Homebrew cask.
 #
 #   Scripts/release.sh                 notarized release for the version in Support/Info.plist (tag v<version>)
 #   Scripts/release.sh --no-notarize   Developer ID-signed only; Gatekeeper asks users to approve the first launch
 #
 # Re-running for a version that's already released replaces its assets (e.g. to swap in a notarized build).
-# Needs: a "Developer ID Application" certificate in the keychain, an authenticated `gh`, and for
-# notarization a notarytool keychain profile (default "notary", override with NOTARY_PROFILE).
+# Needs: a "Developer ID Application" certificate, the Sparkle EdDSA key in the login keychain
+# (account io.github.bubb4rd.GlassUsage), an authenticated `gh` with push access to bubb4rd/homebrew-tap,
+# and for notarization a notarytool keychain profile (default "notary", override with NOTARY_PROFILE).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+REPO="bubb4rd/GlassUsage"
+TAP="bubb4rd/homebrew-tap"
+BUNDLE_ID="io.github.bubb4rd.GlassUsage"
 NOTARIZE=1
 [[ "${1:-}" == "--no-notarize" ]] && NOTARIZE=0
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)"
+BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Support/Info.plist)"
 TAG="v$VERSION"
 PROFILE="${NOTARY_PROFILE:-notary}"
 IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)}"
@@ -33,18 +38,82 @@ if (( NOTARIZE )); then
   # Re-zip so the download carries the stapled ticket (works offline on first launch).
   rm -f "$ZIP"
   ditto -c -k --keepParent build/GlassUsage.app "$ZIP"
-  NOTES="Signed with Developer ID and notarized by Apple. Unzip, move GlassUsage.app to Applications, open it."
+  NOTES="Signed with Developer ID and notarized by Apple. Install with \`brew install --cask bubb4rd/tap/glassusage\`, or unzip and move GlassUsage.app to Applications. Existing installs update themselves."
 else
   NOTES="Signed with Developer ID, not yet notarized. On first launch macOS blocks it: open System Settings → Privacy & Security and click **Open Anyway** (or run \`xattr -dr com.apple.quarantine /Applications/GlassUsage.app\`)."
 fi
-shasum -a 256 "$ZIP" | sed 's|build/||' > "$ZIP.sha256"
+SHA256="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
+echo "$SHA256  $(basename "$ZIP")" > "$ZIP.sha256"
 cat "$ZIP.sha256"
 
-if gh release view "$TAG" >/dev/null 2>&1; then
-  gh release upload "$TAG" "$ZIP" "$ZIP.sha256" --clobber
-  gh release edit "$TAG" --notes "$NOTES"
+# Sparkle feed. The app reads releases/latest/download/appcast.xml, so every release carries its own.
+SPARKLE_SIG="$(.build/artifacts/sparkle/Sparkle/bin/sign_update --account "$BUNDLE_ID" "$ZIP")"
+cat > build/appcast.xml <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>GlassUsage</title>
+    <item>
+      <title>Version $VERSION</title>
+      <pubDate>$(LC_ALL=C date -R)</pubDate>
+      <sparkle:version>$BUILD</sparkle:version>
+      <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>https://github.com/$REPO/releases/tag/$TAG</sparkle:fullReleaseNotesLink>
+      <enclosure url="https://github.com/$REPO/releases/download/$TAG/$(basename "$ZIP")" $SPARKLE_SIG type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>
+EOF
+
+ASSETS=("$ZIP" "$ZIP.sha256" build/appcast.xml)
+if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
+  gh release upload "$TAG" "${ASSETS[@]}" -R "$REPO" --clobber
+  gh release edit "$TAG" -R "$REPO" --notes "$NOTES"
 else
   git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || git tag -a "$TAG" -m "GlassUsage $VERSION"
   git push origin "$TAG"
-  gh release create "$TAG" "$ZIP" "$ZIP.sha256" --title "GlassUsage $VERSION" --notes "$NOTES"
+  gh release create "$TAG" "${ASSETS[@]}" -R "$REPO" --title "GlassUsage $VERSION" --notes "$NOTES"
 fi
+
+# Homebrew cask in the tap.
+TAPDIR="$(mktemp -d)"
+gh repo clone "$TAP" "$TAPDIR" -- --quiet
+mkdir -p "$TAPDIR/Casks"
+cat > "$TAPDIR/Casks/glassusage.rb" <<EOF
+cask "glassusage" do
+  version "$VERSION"
+  sha256 "$SHA256"
+
+  url "https://github.com/$REPO/releases/download/v#{version}/GlassUsage-#{version}.zip"
+  name "GlassUsage"
+  desc "Claude and Codex plan limits and token spend in the menu bar"
+  homepage "https://github.com/$REPO"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  auto_updates true
+  depends_on macos: ">= :tahoe"
+
+  app "GlassUsage.app"
+
+  uninstall quit: "$BUNDLE_ID"
+
+  zap trash: [
+    "~/Library/Application Support/GlassUsage",
+    "~/Library/Caches/$BUNDLE_ID",
+    "~/Library/HTTPStorages/$BUNDLE_ID",
+    "~/Library/Preferences/$BUNDLE_ID.plist",
+  ]
+end
+EOF
+git -C "$TAPDIR" add Casks/glassusage.rb
+if ! git -C "$TAPDIR" diff --cached --quiet; then
+  git -C "$TAPDIR" commit -q -m "glassusage $VERSION"
+  git -C "$TAPDIR" push -q
+fi
+rm -rf "$TAPDIR"
+echo "Released $TAG: https://github.com/$REPO/releases/tag/$TAG"

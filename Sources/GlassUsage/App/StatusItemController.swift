@@ -20,12 +20,15 @@ final class StatusItemController: NSObject {
     private var openedByHover = false
     private var anchor = NSPoint.zero
 
-    init(store: UsageStore) {
+    private let updater: Updater
+
+    init(store: UsageStore, updater: Updater) {
         self.store = store
+        self.updater = updater
         panel = GlassPanel()
         super.init()
 
-        let root = UsagePanelView(store: store, model: panelModel,
+        let root = UsagePanelView(store: store, updater: updater, model: panelModel,
                                   onSizeChange: { [weak self] size in
                                       // Resizing the window inside SwiftUI's layout pass is ignored; do it next turn.
                                       DispatchQueue.main.async { self?.layoutPanel(size: size) }
@@ -102,6 +105,9 @@ final class StatusItemController: NSObject {
         let menu = NSMenu()
         menu.addItem(withTitle: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
+        if updater.isAvailable {
+            menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
+        }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit GlassUsage", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
@@ -110,6 +116,8 @@ final class StatusItemController: NSObject {
     }
 
     @objc private func refreshNow() { Task { await store.refresh() } }
+
+    @objc private func checkForUpdates() { updater.checkForUpdates() }
 
     @objc private func openSettings() {
         panelModel.showingSettings = true

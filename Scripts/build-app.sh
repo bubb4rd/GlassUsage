@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds a universal GlassUsage.app into ./build.
+# Builds a universal GlassUsage.app (with Sparkle.framework embedded) into ./build.
 #
 #   Scripts/build-app.sh            ad-hoc signed, for running locally
 #   Scripts/build-app.sh --open     same, then (re)launch it
@@ -14,20 +14,31 @@ ARCHS=(--arch arm64 --arch x86_64)
 
 cd "$ROOT"
 swift build -c release "${ARCHS[@]}"
-BIN="$(swift build -c release "${ARCHS[@]}" --show-bin-path)/GlassUsage"
+PRODUCTS="$(swift build -c release "${ARCHS[@]}" --show-bin-path)"
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/GlassUsage"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
+cp "$PRODUCTS/GlassUsage" "$APP/Contents/MacOS/GlassUsage"
 cp "$ROOT/Support/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/Support/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+ditto "$PRODUCTS/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 
-if [[ "$IDENTITY" == "-" ]]; then
-  codesign --force --sign - --timestamp=none "$APP"
-else
-  codesign --force --sign "$IDENTITY" --options runtime --timestamp "$APP"
-fi
-codesign --verify --strict "$APP"
+# Sign inside-out: Sparkle's helpers, the framework, then the app (codesign --deep is unreliable).
+sign() {
+  if [[ "$IDENTITY" == "-" ]]; then
+    codesign --force --sign - --timestamp=none "$@"
+  else
+    codesign --force --sign "$IDENTITY" --options runtime --timestamp "$@"
+  fi
+}
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+sign "$SPARKLE/XPCServices/Installer.xpc"
+sign --preserve-metadata=entitlements "$SPARKLE/XPCServices/Downloader.xpc"
+sign "$SPARKLE/Autoupdate"
+sign "$SPARKLE/Updater.app"
+sign "$APP/Contents/Frameworks/Sparkle.framework"
+sign "$APP"
+codesign --verify --deep --strict "$APP"
 
 echo "Built $APP ($(lipo -archs "$APP/Contents/MacOS/GlassUsage"))"
 if [[ "${1:-}" == "--open" ]]; then
