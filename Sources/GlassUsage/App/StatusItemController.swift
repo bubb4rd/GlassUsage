@@ -70,9 +70,10 @@ final class StatusItemController: NSObject {
         let snapshot = state?.snapshot
 
         let stale = snapshot.map { Date.now.timeIntervalSince($0.fetchedAt) > 30 * 60 } ?? true
-        button.image = StatusIcon.image(dimmed: stale || state?.error != nil)
+        let worst = snapshot?.mostConstrained
+        button.image = StatusIcon.image(fraction: worst?.fraction, dimmed: stale || state?.error != nil)
 
-        if settings.showPercentInMenuBar, let worst = snapshot?.mostConstrained {
+        if settings.showPercentInMenuBar, let worst {
             button.attributedTitle = NSAttributedString(
                 string: " \(Int(worst.percent.rounded()))%",
                 attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)])
