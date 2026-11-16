@@ -72,7 +72,22 @@ struct SettingsView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .help("GlassUsage \(Updater.versionString)")
-            if updater.isAvailable {
+            if let version = updater.availableVersion {
+                Button { updater.checkForUpdates() } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle.fill")
+                        Text("Update to \(version)")
+                    }
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .frame(height: 22)
+                    .background(Capsule().fill(Theme.good))
+                    .fixedSize()
+                }
+                .buttonStyle(.plain)
+                .help("GlassUsage \(version) is available")
+            } else if updater.isAvailable {
                 IconButton(symbol: "arrow.down.circle", help: "Check for updates") { updater.checkForUpdates() }
             }
             IconButton(symbol: "info.circle", help: "Privacy", active: showingPrivacy) { showingPrivacy.toggle() }
