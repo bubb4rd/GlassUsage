@@ -8,7 +8,7 @@ nonisolated enum LocalSource: String, Codable, CaseIterable, Sendable {
         switch self {
         case .claudeCode: "Claude Code"
         case .codexCLI: "Codex CLI"
-        case .antigravityCLI: "Antigravity CLI"
+        case .antigravityCLI: "Antigravity"
         case .museCode: "Muse Code"
         case .omp: "omp"
         }

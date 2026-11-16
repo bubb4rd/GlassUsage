@@ -55,15 +55,37 @@ import Testing
     @Test func antigravityGenerationSeparatesCacheReadsFromInput() throws {
         let row = bytes("0ac601225708f50b10f05618d21128946c30183a28626f742d62366566383335392d303634632d343435352d383633622d37363364333264323364386348f10650e10a5a1731597a37616f4b32475a5849694c4d50796347733641499a011167656d696e692d342d687964726f67656ea201240a0a6d6f64656c5f656e756d12164d4f44454c5f504c414345484f4c4445525f4d353235a201140a0f6c6173745f737465705f696e646578120132aa011847656d696e69203420487964726f67656e20284869676829")
         let generation = try #require(AntigravityLogs.generation(row))
-        #expect(generation.model == "gemini-4-hydrogen")
-        #expect(generation.tokens == TokenCounts(input: 11120, output: 2258, cacheRead: 13844, cacheWrite: 0),
+        let record = try #require(generation.records.first)
+        #expect(generation.records.count == 1)
+        #expect(record.model == "gemini-4-hydrogen")
+        #expect(record.tokens == TokenCounts(input: 11120, output: 2258, cacheRead: 13844, cacheWrite: 0),
                 "output already includes the 881 thinking tokens")
+        #expect(record.id == "1Yz7aoK2GZXIiLMPycGs6AI")
         #expect(generation.lastStepIndex == 2)
-        #expect(generation.id == "bot-b6ef8359-064c-4455-863b-763d32d23d8c")
+        #expect(generation.at == nil, "the CLI dates calls by their step")
     }
 
-    @Test func antigravityCancelledGenerationHasNoUsage() {
-        #expect(AntigravityLogs.generation(bytes("0a05220308a70a")) == nil)
+    @Test func antigravityCancelledGenerationHasNoUsage() throws {
+        #expect(try #require(AntigravityLogs.generation(bytes("0a05220308a70a"))).records.isEmpty)
+    }
+
+    /// T3 Code's Antigravity runtime can keep usage only in `steps.metadata`, naming the model by display
+    /// name: time 8 {1700000000}, usage 9 {model 1402, input 100, response 40, thinking 60, id "r1"},
+    /// model 24 {1402, "Claude 5.5 Opus (Thinking)"}, and a billed retry 28 {2 {input 7, output 3, id "r2"}}.
+    @Test func antigravityStepOnlyUsageCountsRetriesAndNamesModel() throws {
+        let step = try #require(AntigravityLogs.step(bytes("42060880e2cfaa064a0d08fa0a1064483c50285a027231c2011f08fa0a421a436c6175646520352e35204f70757320285468696e6b696e6729e2010a1208100718035a027232")))
+        #expect(step.at == Date(timeIntervalSince1970: 1_700_000_000))
+        #expect(step.records.map(\.id) == ["r1", "r2"])
+        #expect(step.records.map(\.model) == ["claude-opus-5-5-thinking", "claude-opus-5-5-thinking"])
+        #expect(step.records.first?.tokens == TokenCounts(input: 100, output: 100, cacheRead: 0, cacheWrite: 0),
+                "no total output field: thinking plus response")
+        #expect(step.records.last?.tokens == TokenCounts(input: 7, output: 3, cacheRead: 0, cacheWrite: 0))
+    }
+
+    @Test func antigravityDisplayNamesBecomeCatalogIDs() {
+        #expect(AntigravityLogs.modelName(id: nil, name: "Claude 5.5 Opus (Thinking)") == "claude-opus-5-5-thinking")
+        #expect(AntigravityLogs.modelName(id: "MODEL_PLACEHOLDER_M525", name: "Gemini 3.8 Flash (Low)") == "gemini-3.8-flash-low")
+        #expect(AntigravityLogs.modelName(id: "gemini-3.8-flash-n", name: "Gemini 3.8 Flash (Low)") == "gemini-3.8-flash-n")
     }
 
     @Test func antigravityFlashPricesWithoutTheCatalog() throws {

@@ -90,7 +90,7 @@ actor LocalUsageScanner {
         return [
             (.claudeCode, claudeRoots),
             (.codexCLI, [codexHome.appending(path: "sessions"), codexHome.appending(path: "archived_sessions")]),
-            (.antigravityCLI, [AntigravityLogs.conversationsDirectory]),
+            (.antigravityCLI, AntigravityLogs.conversationDirectories()),
             (.museCode, [MuseProvider.sessionsDirectory]),
             (.omp, [home.appending(path: ".omp/agent/sessions")]),
         ]

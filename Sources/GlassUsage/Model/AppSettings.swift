@@ -47,12 +47,12 @@ final class AppSettings {
 
     init() {
         let fm = FileManager.default
-        // Track every provider whose CLI has been set up on this Mac.
-        let installed: [ProviderID: String] = [
-            .claude: URL.homeDirectory.appending(path: ".claude").path,
-            .codex: CodexProvider.authFileURL.path,
-            .antigravity: AntigravityProvider.stateDirectory.path,
-            .muse: MuseProvider.authFileURL.path,
+        // Track every provider whose CLI has been set up on this Mac; Antigravity also through T3 Code.
+        let installed: [ProviderID: [String]] = [
+            .claude: [URL.homeDirectory.appending(path: ".claude").path],
+            .codex: [CodexProvider.authFileURL.path],
+            .antigravity: [AntigravityProvider.stateDirectory.path, AntigravityLogs.t3ProfilesDirectory.path],
+            .muse: [MuseProvider.authFileURL.path],
         ]
         var registered: [String: Any] = [
             Keys.hover: false,
@@ -62,7 +62,7 @@ final class AppSettings {
             Keys.menuBarProvider: ProviderID.claude.rawValue,
             Keys.refresh: 5,
         ]
-        for (provider, path) in installed { registered[Keys.enabled(provider)] = fm.fileExists(atPath: path) }
+        for (provider, paths) in installed { registered[Keys.enabled(provider)] = paths.contains(where: fm.fileExists) }
         defaults.register(defaults: registered)
         // 1.1 stored the percentage as an on/off switch; carry "off" over.
         if let legacy = defaults.object(forKey: Keys.legacyPercent) as? Bool {
