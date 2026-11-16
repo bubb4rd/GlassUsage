@@ -42,7 +42,7 @@ struct UsagePanelView: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 if let first = providers.first {
-                    ProviderTitle(provider: first, state: store.state(for: first), now: now)
+                    ProviderTitle(provider: first, state: store.state(for: first))
                 }
                 Spacer()
                 Text(store.isRefreshing ? "refreshing" : Format.ago(store.lastRefresh, now: now))
@@ -58,7 +58,14 @@ struct UsagePanelView: View {
                            active: settings.showSpend) {
                     withAnimation(Self.resize) { settings.showSpend.toggle() }
                 }
-                IconButton(symbol: "gearshape", help: "Settings (⌘,)") { model.showingSettings = true }
+                IconButton(symbol: "gearshape", help: updater.availableVersion == nil ? "Settings (⌘,)" : "Settings (⌘,): update available") {
+                    model.showingSettings = true
+                }
+                .overlay(alignment: .topTrailing) {
+                    if updater.availableVersion != nil {
+                        Circle().fill(Theme.good).frame(width: 6, height: 6).offset(x: -3, y: 3)
+                    }
+                }
             }
             .frame(height: 28)
 
@@ -116,7 +123,7 @@ private struct ProviderLimits: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if showsTitle {
-                ProviderTitle(provider: provider, state: state, now: now).padding(.bottom, 6)
+                ProviderTitle(provider: provider, state: state).padding(.bottom, 6)
             }
 
             if let snapshot = state.snapshot {
@@ -140,6 +147,7 @@ private struct ProviderLimits: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .padding(.top, 3)
+                    .help(state.snapshot.map { "Showing the reading from \(Format.ago($0.fetchedAt, now: now))" } ?? "")
             }
         }
         .padding(.top, showsTitle ? 9 : 6)
@@ -147,11 +155,10 @@ private struct ProviderLimits: View {
     }
 }
 
-/// Logo, name and plan; when the latest refresh failed, how old the reading on screen is.
+/// Logo, name and plan.
 private struct ProviderTitle: View {
     let provider: ProviderID
     let state: ProviderState
-    let now: Date
 
     var body: some View {
         HStack(spacing: 7) {
@@ -165,11 +172,7 @@ private struct ProviderTitle: View {
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
                     .background(RoundedRectangle(cornerRadius: 5).fill(Theme.fill2))
-            }
-            if let snapshot = state.snapshot, state.error != nil {
-                Text("· \(Format.ago(snapshot.fetchedAt, now: now))")
-                    .font(.system(size: 11)).foregroundStyle(.tertiary)
-                    .help("Showing the last reading")
+                    .fixedSize()
             }
         }
     }
