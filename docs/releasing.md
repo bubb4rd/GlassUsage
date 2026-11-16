@@ -13,10 +13,12 @@ Scripts/release.sh
 1. Builds a universal `GlassUsage.app` with Sparkle embedded, signed inside-out with the Developer ID certificate and hardened runtime (`Scripts/build-app.sh`).
 2. Notarizes the zip with `notarytool`, staples the ticket and checks it with `spctl`.
 3. Signs the zip for Sparkle (EdDSA) and writes `appcast.xml`.
-4. Publishes `GlassUsage-<version>.zip`, its `.sha256` and `appcast.xml` as the GitHub release `v<version>`. If the release already exists, its assets are replaced.
+4. Publishes `GlassUsage-<version>.zip`, its `.sha256` and `appcast.xml` as the GitHub release `v<version>`, with a *What's changed* list built from the commit subjects since the previous tag (version bumps, `release:` and `README` commits left out). If the release already exists, its assets and notes are replaced.
 5. Updates `Casks/glassusage.rb` in [bubb4rd/homebrew-tap](https://github.com/bubb4rd/homebrew-tap).
 
 `--no-notarize` skips step 2. Gatekeeper then asks users to approve the first launch.
+
+The README never names a version: its badge and download links point at the latest release, so a release needs no README edit.
 
 ## How updates reach users
 

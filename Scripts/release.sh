@@ -42,6 +42,10 @@ if (( NOTARIZE )); then
 else
   NOTES="Signed with Developer ID, not yet notarized. On first launch macOS blocks it: open System Settings → Privacy & Security and click **Open Anyway** (or run \`xattr -dr com.apple.quarantine /Applications/GlassUsage.app\`)."
 fi
+# What changed: commit subjects since the previous release tag, minus version bumps and repo housekeeping.
+PREV="$(git describe --tags --abbrev=0 --match 'v*' --exclude "$TAG" HEAD 2>/dev/null || true)"
+CHANGES="$(git log --no-merges --format='- %s' "${PREV:+$PREV..}HEAD" | grep -vE '^- (Bump version|release:|README)' || true)"
+[[ -n "$CHANGES" ]] && NOTES="## What's changed"$'\n\n'"$CHANGES"$'\n\n'"$NOTES"
 SHA256="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
 echo "$SHA256  $(basename "$ZIP")" > "$ZIP.sha256"
 cat "$ZIP.sha256"
