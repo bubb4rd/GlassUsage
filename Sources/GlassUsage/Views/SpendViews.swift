@@ -68,8 +68,8 @@ struct SpendSection: View {
 
 // MARK: Ledger
 
-/// One column per day stacked by provider, with the peak on the right and a date axis that turns
-/// into the hovered day's numbers.
+/// One column per day stacked by provider, spanning the full width with the peak labelled above the
+/// top rule, and a date axis that turns into the hovered day's numbers.
 private struct SpendLedger: View {
     let summary: SpendSummary
     let range: SpendRange
@@ -77,49 +77,46 @@ private struct SpendLedger: View {
     @State private var hovered: Date?
 
     private static let chartHeight: CGFloat = 52
-    private static let gutter: CGFloat = 38
 
     var body: some View {
         let peak = max(summary.days.map(\.tokens).max() ?? 0, 1)
         let spacing: CGFloat = summary.days.count > 14 ? 2 : 4
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 0) {
-                HStack(alignment: .bottom, spacing: spacing) {
-                    ForEach(summary.days) { day in
-                        DayBar(day: day, providers: summary.providers,
-                               height: Self.chartHeight * Double(day.tokens) / Double(peak))
-                            .frame(maxWidth: .infinity, maxHeight: Self.chartHeight, alignment: .bottom)
-                            .opacity(day.inRange ? 1 : 0.55)
-                            .contentShape(Rectangle())
-                            .onHover { inside in
-                                if inside { hovered = day.id } else if hovered == day.id { hovered = nil }
-                            }
-                            .accessibilityElement()
-                            .accessibilityLabel(day.readout)
-                    }
+            HStack(alignment: .bottom, spacing: spacing) {
+                ForEach(summary.days) { day in
+                    DayBar(day: day, providers: summary.providers,
+                           height: Self.chartHeight * Double(day.tokens) / Double(peak))
+                        .frame(maxWidth: .infinity, maxHeight: Self.chartHeight, alignment: .bottom)
+                        .opacity(day.inRange ? 1 : 0.55)
+                        .contentShape(Rectangle())
+                        .onHover { inside in
+                            if inside { hovered = day.id } else if hovered == day.id { hovered = nil }
+                        }
+                        .accessibilityElement()
+                        .accessibilityLabel(day.readout)
                 }
-                .frame(height: Self.chartHeight)
-                .overlay(alignment: .top) {
-                    HorizontalRule()
-                        .stroke(Color.primary.opacity(0.16), style: StrokeStyle(lineWidth: 0.5, dash: [2, 2]))
-                        .frame(height: 0.5)
-                }
+            }
+            .frame(height: Self.chartHeight)
+            .overlay(alignment: .top) {
+                HorizontalRule()
+                    .stroke(Color.primary.opacity(0.16), style: StrokeStyle(lineWidth: 0.5, dash: [2, 2]))
+                    .frame(height: 0.5)
+            }
+            .overlay(alignment: .topTrailing) {
                 Text(Format.tokens(peak))
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .fixedSize()
-                    .frame(width: Self.gutter, alignment: .trailing)
-                    .offset(y: -6)
+                    .alignmentGuide(.top) { $0[.bottom] + 2 }
             }
-            .padding(.top, 10)
+            .padding(.top, 16)
 
             axis(spacing: spacing)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .frame(height: 12)
                 .padding(.top, 5)
-                .padding(.trailing, Self.gutter)
 
             HStack(spacing: 10) {
                 if summary.tokens.total > 0 {
