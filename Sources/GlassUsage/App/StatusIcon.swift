@@ -1,22 +1,43 @@
 import AppKit
 
 /// Menu bar glyph: concentric rings, the shortest window (session) inside and the longest (week or month)
-/// outside, each filled clockwise from 12 o'clock. Template image, so it follows the menu bar's light/dark
-/// and tinting. Dimmed when the reading is stale or failed.
+/// outside, each filled clockwise from 12 o'clock, or a single ring for one window. Template image, so it
+/// follows the menu bar's light/dark and tinting. Dimmed when the reading is stale or failed.
 enum StatusIcon {
     /// Readings older than this dim the glyph.
     static let staleAfter: TimeInterval = 30 * 60
 
     /// The glyph for a provider's latest state, as the menu bar draws it. Providers that meter model
     /// groups show the group closest to its limit.
-    static func image(for state: ProviderState?, now: Date = .now) -> NSImage {
+    static func image(for state: ProviderState?, rings: MenuBarRings, now: Date = .now) -> NSImage {
         let snapshot = state?.snapshot
         let stale = snapshot.map { now.timeIntervalSince($0.fetchedAt) > staleAfter } ?? true
-        return image(fractions: snapshot?.iconWindows.map(\.fraction) ?? [], dimmed: stale || state?.error != nil)
+        let windows = snapshot?.iconWindows ?? []
+        let fractions: [Double?] = switch rings {
+        // A provider with a single window gets only the outer ring.
+        case .both: windows.count == 1 ? [windows[0].fraction] : [windows.first?.fraction, windows.last?.fraction]
+        case .session: [snapshot?.sessionWindow?.fraction]
+        case .weekly: [snapshot?.longWindow?.fraction]
+        }
+        return image(rings: fractions, dimmed: stale || state?.error != nil)
     }
 
-    /// `fractions` are the windows shortest first; no fractions draws empty tracks.
-    static func image(fractions: [Double], dimmed: Bool) -> NSImage {
+    /// The percentage beside the glyph, or nil when the mode is off or the window has no reading.
+    static func percentText(for snapshot: ProviderSnapshot?, mode: MenuBarPercent) -> String? {
+        func percent(_ window: UsageWindow?) -> String? { window.map { "\(Int($0.percent.rounded()))%" } }
+        switch mode {
+        case .off: return nil
+        case .highest: return percent(snapshot?.mostConstrained)
+        case .session: return percent(snapshot?.sessionWindow)
+        case .weekly: return percent(snapshot?.longWindow)
+        case .both:
+            let parts = [snapshot?.sessionWindow, snapshot?.longWindow].compactMap(percent)
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        }
+    }
+
+    /// `rings` are inner then outer; one entry draws only the outer ring. A nil fraction draws an empty track.
+    static func image(rings: [Double?], dimmed: Bool) -> NSImage {
         let size = NSSize(width: 16, height: 16)
         let image = NSImage(size: size, flipped: false) { rect in
             let lineWidth: CGFloat = 2.2
@@ -40,10 +61,9 @@ enum StatusIcon {
                 arc.stroke()
             }
 
-            ring(radius: rect.width / 2 - lineWidth / 2 - 0.3, fraction: fractions.last)
-            // A provider with a single window gets only the outer ring.
-            if fractions.count != 1 {
-                ring(radius: 3.2, fraction: fractions.count > 1 ? fractions.first : nil)
+            ring(radius: rect.width / 2 - lineWidth / 2 - 0.3, fraction: rings.last ?? nil)
+            if rings.count > 1 {
+                ring(radius: 3.2, fraction: rings.first ?? nil)
             }
             return true
         }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A strip of choices (providers, menu bar, spend view, refresh) over one group of switches.
+/// A strip of choices (providers, menu bar, rings, percent, spend view, refresh) over one group of switches.
 /// Version, updates, privacy and Quit live in the header.
 struct SettingsView: View {
     let store: UsageStore
@@ -22,6 +22,12 @@ struct SettingsView: View {
                     FlowLayout { ForEach(ProviderID.allCases) { trackChip($0) } }
                 }
                 stripRow("Menu bar") { FlowLayout { menuBarOptions } }
+                stripRow("Rings") {
+                    PillPicker(options: MenuBarRings.allCases.map { ($0, $0.label) }, selection: $settings.menuBarRings)
+                }
+                stripRow("Percent") {
+                    PillPicker(options: MenuBarPercent.allCases.map { ($0, $0.label) }, selection: $settings.menuBarPercent)
+                }
                 stripRow("Spend") {
                     PillPicker(options: SpendView.allCases.map { ($0, $0.label) }, selection: $settings.spendView,
                                symbols: Dictionary(uniqueKeysWithValues: SpendView.allCases.map { ($0, $0.symbol) }))
@@ -118,7 +124,8 @@ struct SettingsView: View {
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// Each tracked provider drawn as the menu bar item it would produce; picking one puts it in the menu bar.
+    /// Each tracked provider drawn as the menu bar item it would produce, with the chosen rings and
+    /// percentage; picking one puts it in the menu bar.
     @ViewBuilder
     private var menuBarOptions: some View {
         let enabled = store.settings.enabledProviders
@@ -129,16 +136,15 @@ struct SettingsView: View {
             if enabled.count == 1 {
                 Text("only tracked").font(.system(size: 11.5)).foregroundStyle(.tertiary)
             }
-            percentChip
         }
     }
 
     private func menuBarOption(_ provider: ProviderID, selected: Bool) -> some View {
         let state = store.state(for: provider)
-        let windows = state.snapshot?.windows.map(\.shortLabel) ?? []
-        return Button { store.settings.menuBarProvider = provider } label: {
+        let settings = store.settings
+        return Button { settings.menuBarProvider = provider } label: {
             HStack(spacing: 6) {
-                StatusItemPreview(state: state, showPercent: store.settings.showPercentInMenuBar)
+                StatusItemPreview(state: state, rings: settings.menuBarRings, percent: settings.menuBarPercent)
                 Text(provider.displayName).fixedSize()
             }
             .padding(.leading, 2)
@@ -150,23 +156,9 @@ struct SettingsView: View {
         .opacity(state.snapshot == nil ? 0.55 : 1)
         .help(state.snapshot == nil
             ? "\(provider.displayName) has no reading to show"
-            : "Show \(provider.displayName) in the menu bar: inner ring \(windows.first ?? ""), outer ring \(windows.last ?? "")")
+            : "Show \(provider.displayName) in the menu bar")
         .accessibilityLabel("Show \(provider.displayName) in the menu bar")
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private var percentChip: some View {
-        let settings = store.settings
-        return Button { settings.showPercentInMenuBar.toggle() } label: {
-            Text("%")
-                .fontWeight(.semibold)
-                .frame(width: 26)
-                .chip(selected: settings.showPercentInMenuBar)
-        }
-        .buttonStyle(.plain)
-        .help(settings.showPercentInMenuBar ? "Hide the percentage in the menu bar" : "Show the percentage in the menu bar")
-        .accessibilityLabel("Percentage in menu bar")
-        .accessibilityAddTraits(settings.showPercentInMenuBar ? .isSelected : [])
     }
 
     private func stripRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -197,17 +189,18 @@ struct SettingsView: View {
     }
 }
 
-/// The status item as the menu bar draws it for one provider: the ring glyph plus the highest percentage.
+/// The status item as the menu bar draws it for one provider: the ring glyph plus the chosen percentage.
 private struct StatusItemPreview: View {
     let state: ProviderState
-    let showPercent: Bool
+    let rings: MenuBarRings
+    let percent: MenuBarPercent
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(nsImage: StatusIcon.image(for: state))
+            Image(nsImage: StatusIcon.image(for: state, rings: rings))
                 .renderingMode(.template)
-            if showPercent, let worst = state.snapshot?.mostConstrained {
-                Text("\(Int(worst.percent.rounded()))%")
+            if let text = StatusIcon.percentText(for: state.snapshot, mode: percent) {
+                Text(text)
                     .font(.system(size: 12, weight: .medium))
                     .monospacedDigit()
             }
@@ -222,7 +215,7 @@ private struct StatusItemPreview: View {
 
 private extension View {
     /// Toggle chip in the settings strip: filled when selected, a hairline outline otherwise.
-    /// `outlined` adds a ring to the selected chip so a picked option stands out from the % toggle.
+    /// `outlined` adds a ring to the selected chip, marking a single pick rather than an on/off toggle.
     func chip(selected: Bool, outlined: Bool = false) -> some View {
         let shape = RoundedRectangle(cornerRadius: 9)
         return font(.system(size: 11.5))

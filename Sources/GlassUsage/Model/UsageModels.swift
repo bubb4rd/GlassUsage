@@ -75,6 +75,12 @@ nonisolated struct ProviderSnapshot: Codable, Hashable, Sendable {
         guard let group = mostConstrained?.group else { return windows }
         return windows.filter { $0.group == group }
     }
+
+    /// The menu bar group's session window (shorter than a day), if the provider reported one.
+    var sessionWindow: UsageWindow? { iconWindows.first { $0.key == "session" } }
+
+    /// The menu bar group's longest window: the week, or the month on some Codex plans.
+    var longWindow: UsageWindow? { iconWindows.last { $0.key != "session" } }
 }
 
 nonisolated enum ProviderError: LocalizedError, Sendable {

@@ -16,7 +16,10 @@ final class AppSettings {
     }
     /// Peek at usage by hovering the menu bar icon, in addition to clicking.
     var openOnHover: Bool { didSet { defaults.set(openOnHover, forKey: Keys.hover) } }
-    var showPercentInMenuBar: Bool { didSet { defaults.set(showPercentInMenuBar, forKey: Keys.percent) } }
+    /// Which windows the menu bar glyph draws as rings.
+    var menuBarRings: MenuBarRings { didSet { defaults.set(menuBarRings.rawValue, forKey: Keys.rings) } }
+    /// Which percentage the menu bar shows next to the glyph.
+    var menuBarPercent: MenuBarPercent { didSet { defaults.set(menuBarPercent.rawValue, forKey: Keys.percent) } }
     var menuBarProvider: ProviderID { didSet { defaults.set(menuBarProvider.rawValue, forKey: Keys.menuBarProvider) } }
     var refreshMinutes: Int { didSet { defaults.set(refreshMinutes, forKey: Keys.refresh) } }
     /// Show the token-spend block (totals, days, mix, models) below the limits.
@@ -53,17 +56,24 @@ final class AppSettings {
         ]
         var registered: [String: Any] = [
             Keys.hover: false,
-            Keys.percent: true,
+            Keys.rings: MenuBarRings.both.rawValue,
+            Keys.percent: MenuBarPercent.highest.rawValue,
             Keys.spend: true,
             Keys.menuBarProvider: ProviderID.claude.rawValue,
             Keys.refresh: 5,
         ]
         for (provider, path) in installed { registered[Keys.enabled(provider)] = fm.fileExists(atPath: path) }
         defaults.register(defaults: registered)
+        // 1.1 stored the percentage as an on/off switch; carry "off" over.
+        if let legacy = defaults.object(forKey: Keys.legacyPercent) as? Bool {
+            if !legacy { defaults.set(MenuBarPercent.off.rawValue, forKey: Keys.percent) }
+            defaults.removeObject(forKey: Keys.legacyPercent)
+        }
         let defaults = defaults
         enabled = Set(ProviderID.allCases.filter { defaults.bool(forKey: Keys.enabled($0)) })
         openOnHover = defaults.bool(forKey: Keys.hover)
-        showPercentInMenuBar = defaults.bool(forKey: Keys.percent)
+        menuBarRings = MenuBarRings(rawValue: defaults.string(forKey: Keys.rings) ?? "") ?? .both
+        menuBarPercent = MenuBarPercent(rawValue: defaults.string(forKey: Keys.percent) ?? "") ?? .highest
         menuBarProvider = ProviderID(rawValue: defaults.string(forKey: Keys.menuBarProvider) ?? "") ?? .claude
         refreshMinutes = defaults.integer(forKey: Keys.refresh)
         showSpend = defaults.bool(forKey: Keys.spend)
@@ -85,7 +95,9 @@ final class AppSettings {
     private enum Keys {
         static func enabled(_ provider: ProviderID) -> String { "provider.\(provider.rawValue).enabled" }
         static let hover = "openOnHover"
-        static let percent = "showPercentInMenuBar"
+        static let rings = "menuBarRings"
+        static let percent = "menuBarPercent"
+        static let legacyPercent = "showPercentInMenuBar"
         static let spend = "showSpend"
         static let spendView = "spendView"
         static let menuBarProvider = "menuBarProvider"
@@ -108,6 +120,36 @@ enum SpendView: String, CaseIterable {
         switch self {
         case .ledger: "chart.bar.fill"
         case .calendar: "square.grid.3x3.fill"
+        }
+    }
+}
+
+/// The windows the menu bar glyph draws: session inside and the longest window (week, or month) outside,
+/// or one of them alone as a single ring.
+enum MenuBarRings: String, CaseIterable {
+    case both, session, weekly
+
+    var label: String {
+        switch self {
+        case .both: "Both"
+        case .session: "Session"
+        case .weekly: "Weekly"
+        }
+    }
+}
+
+/// The percentage beside the glyph: none, the limit closest to running out, one window, or session and
+/// longest window side by side.
+enum MenuBarPercent: String, CaseIterable {
+    case off, highest, session, weekly, both
+
+    var label: String {
+        switch self {
+        case .off: "Off"
+        case .highest: "Max"
+        case .session: "Session"
+        case .weekly: "Weekly"
+        case .both: "Both"
         }
     }
 }
