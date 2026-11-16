@@ -68,29 +68,6 @@ enum Theme {
     }
 }
 
-/// Small uppercase section label ("LIMITS · % used").
-struct Eyebrow: View {
-    let text: String
-    var unit: String?
-
-    init(_ text: String, unit: String? = nil) {
-        self.text = text
-        self.unit = unit
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Text(text.uppercased())
-                .font(.system(size: 10.5, weight: .semibold))
-                .tracking(0.6)
-            if let unit {
-                Text(" · \(unit)").font(.system(size: 10.5, weight: .medium))
-            }
-        }
-        .foregroundStyle(.tertiary)
-    }
-}
-
 struct Dot: View {
     let color: Color
     var size: CGFloat = 8

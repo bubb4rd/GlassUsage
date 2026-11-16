@@ -41,8 +41,15 @@ struct UsagePanelView: View {
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Eyebrow("Limits", unit: store.isRefreshing ? "refreshing" : Format.ago(store.lastRefresh, now: now))
+                if let first = providers.first {
+                    ProviderTitle(provider: first, state: store.state(for: first), now: now)
+                }
                 Spacer()
+                Text(store.isRefreshing ? "refreshing" : Format.ago(store.lastRefresh, now: now))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+                    .help(store.lastRefresh.map { "Last refreshed \(Format.clock($0, now: now))" } ?? "")
                 IconButton(symbol: "arrow.clockwise", help: "Refresh (⌘R)", spinning: store.isRefreshing) {
                     Task { await store.refresh() }
                 }
@@ -93,7 +100,8 @@ struct LimitsSection: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(providers.enumerated()), id: \.element) { index, provider in
                 if index > 0 { Rectangle().fill(Theme.hair).frame(height: 0.5) }
-                ProviderLimits(provider: provider, state: store.state(for: provider), now: now)
+                // The first provider's title sits in the panel header.
+                ProviderLimits(provider: provider, state: store.state(for: provider), now: now, showsTitle: index > 0)
             }
         }
     }
@@ -103,33 +111,22 @@ private struct ProviderLimits: View {
     let provider: ProviderID
     let state: ProviderState
     let now: Date
+    let showsTitle: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 7) {
-                ProviderLogo(provider: provider, size: 14)
-                Text(provider.displayName).font(.system(size: 12.5, weight: .semibold))
-                if let plan = state.snapshot?.plan {
-                    Text(plan.uppercased())
-                        .font(.system(size: 10, weight: .semibold))
-                        .tracking(0.3)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(Theme.fill2))
-                }
-                if let snapshot = state.snapshot, state.error != nil {
-                    Text("· \(Format.ago(snapshot.fetchedAt, now: now))")
-                        .font(.system(size: 11)).foregroundStyle(.tertiary)
-                        .help("Showing the last reading")
-                }
+            if showsTitle {
+                ProviderTitle(provider: provider, state: state, now: now).padding(.bottom, 6)
             }
-            .padding(.bottom, 6)
 
             if let snapshot = state.snapshot {
                 if snapshot.groups.isEmpty {
-                    HStack(spacing: 12) {
-                        ForEach(snapshot.windows) { LimitRing(window: $0, now: now) }
+                    // Windows spread so the first starts at the leading edge and the last ends at the trailing one.
+                    HStack(spacing: 0) {
+                        ForEach(Array(snapshot.windows.enumerated()), id: \.element.id) { index, window in
+                            if index > 0 { Spacer(minLength: 12) }
+                            LimitRing(window: window, now: now)
+                        }
                     }
                 } else {
                     GroupedLimits(snapshot: snapshot, now: now)
@@ -145,8 +142,36 @@ private struct ProviderLimits: View {
                     .padding(.top, 3)
             }
         }
-        .padding(.top, 9)
+        .padding(.top, showsTitle ? 9 : 6)
         .padding(.bottom, 8)
+    }
+}
+
+/// Logo, name and plan; when the latest refresh failed, how old the reading on screen is.
+private struct ProviderTitle: View {
+    let provider: ProviderID
+    let state: ProviderState
+    let now: Date
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ProviderLogo(provider: provider, size: 14)
+            Text(provider.displayName).font(.system(size: 12.5, weight: .semibold))
+            if let plan = state.snapshot?.plan {
+                Text(plan.uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.3)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Theme.fill2))
+            }
+            if let snapshot = state.snapshot, state.error != nil {
+                Text("· \(Format.ago(snapshot.fetchedAt, now: now))")
+                    .font(.system(size: 11)).foregroundStyle(.tertiary)
+                    .help("Showing the last reading")
+            }
+        }
     }
 }
 
@@ -241,46 +266,45 @@ private struct LimitRing: View {
 
     var body: some View {
         let band = Theme.Band(percent: window.percent)
-        HStack(spacing: 10) {
+        HStack(spacing: 11) {
             ZStack {
-                Circle().stroke(Theme.track, lineWidth: 6)
+                Circle().stroke(Theme.track, lineWidth: 7)
                 Circle()
                     .trim(from: 0, to: max(shown, 0.01))
-                    .stroke(band.color, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .stroke(band.color, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text("\(Int(window.percent.rounded()))")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 18, weight: .semibold))
                         .contentTransition(.numericText(value: window.percent))
                     Text("%")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
                 .foregroundStyle(band == .critical ? AnyShapeStyle(Theme.critical) : AnyShapeStyle(.primary))
             }
             .padding(3)
-            .frame(width: 58, height: 58)
+            .frame(width: 68, height: 68)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text(window.shortLabel).foregroundStyle(.secondary)
                     if band == .critical {
                         Text("▲ near limit").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(Theme.critical)
                     }
                 }
-                .font(.system(size: 11.5))
+                .font(.system(size: 12))
                 if let reset = window.resetsAt {
                     Text(Format.until(reset, now: now))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 15.5, weight: .semibold))
                     Text(Format.clock(reset, now: now))
-                        .font(.system(size: 10.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
             }
         }
         .monospacedDigit()
-        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
             withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.6)) { shown = window.fraction }
         }
