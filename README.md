@@ -13,7 +13,7 @@
 
 <p align="center">Your Claude, Codex, Antigravity and Muse Code plan limits, plus the tokens you burn, one click away in the menu bar.</p>
 
-<p align="center"><img src="docs/demo.gif" width="480" alt="GlassUsage panel: session and weekly limit rings, then token spend for today, 7 days and 30 days, and Settings"></p>
+<p align="center"><img src="docs/hero.jpg" alt="GlassUsage open from the macOS menu bar: Claude and Codex session and weekly limit rings, then 30 days of token spend by day and by model"></p>
 
 GlassUsage is a native Liquid Glass menu bar app for macOS. It shows how much of your session and weekly limits you've used and when each one resets, so you're never surprised mid-task. Optionally, it also shows how many tokens you've burned and what they would cost at API prices.
 
@@ -35,10 +35,10 @@ brew install --cask bubb4rd/tap/glassusage
 2. Move **GlassUsage.app** to Applications and open it. It's signed and notarized by Apple, so it opens without a warning.
 3. Look for a small double ring and a percentage in the menu bar. There's no Dock icon.
 
-To check a download, compare its SHA-256 with the `.sha256` file published next to it:
+To check a download, keep the zip and the `.sha256` file published next to it in the same folder, then run:
 
 ```sh
-shasum -a 256 GlassUsage-1.0.1.zip
+shasum -a 256 -c GlassUsage-*.zip.sha256    # prints "GlassUsage-<version>.zip: OK"
 ```
 
 ### Before you start
@@ -52,7 +52,9 @@ GlassUsage reads limits from the tools you already use. Sign in to at least one:
 
 ### Updating
 
-GlassUsage updates itself. It checks GitHub for new releases and asks before installing. To check now, open Settings and click the download arrow next to the version, or right-click the menu bar icon. Homebrew installs update the same way.
+GlassUsage updates itself, Homebrew installs included. It checks GitHub for new releases and asks before installing. When a new version is out, a dot appears on the gear and Settings shows a green **Update** button with the new version number. To check by hand, click the download arrow in Settings or right-click the menu bar icon → **Check for Updates…**.
+
+What changed in each version is on the [Releases](https://github.com/bubb4rd/GlassUsage/releases) page.
 
 ### Uninstalling
 
