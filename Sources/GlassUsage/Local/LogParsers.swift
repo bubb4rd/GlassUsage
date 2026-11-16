@@ -9,6 +9,7 @@ nonisolated enum LogParsers {
         case .claudeCode, .omp: [Array(#""usage""#.utf8)]
         case .codexCLI: [Array("token_count".utf8), Array("turn_context".utf8), Array("session_meta".utf8)]
         case .museCode: [Array("model_completed".utf8)]
+        case .antigravityCLI: []  // SQLite, read by AntigravityLogs
         }
     }
 

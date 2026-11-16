@@ -74,7 +74,7 @@ nonisolated struct PricingTable: Codable, Sendable {
             var id = key.lowercased()
             if id.hasPrefix("meta/muse-") { id.removeFirst("meta/".count) }
             guard !id.contains("/"),
-                  ["claude-", "gpt-", "codex", "o3", "o4", "muse-"].contains(where: id.hasPrefix),
+                  ["claude-", "gpt-", "codex", "o3", "o4", "muse-", "gemini-"].contains(where: id.hasPrefix),
                   let entry = value as? [String: Any],
                   let input = entry["input_cost_per_token"] as? Double,
                   let output = entry["output_cost_per_token"] as? Double else { continue }
@@ -116,6 +116,8 @@ nonisolated struct PricingTable: Codable, Sendable {
             "muse-spark-1.1": p(1.25, 4.25, 0.15, 1.25, 1.25),
             "muse-wonder-1.0": p(4, 20, 0.2, 4, 4),
             "muse-ember-1.0": p(0.1, 0.5, 0.004, 0.1, 0.1),
+            // Google bills context caching by storage time, not per written token, so writes bill as input.
+            "gemini-3.8-flash": p(0.75, 3.75, 0.075, 0.75, 0.75),
         ], fetchedAt: nil)
     }()
 }

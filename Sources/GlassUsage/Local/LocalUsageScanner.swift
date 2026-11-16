@@ -9,8 +9,10 @@ actor LocalUsageScanner {
     static let reportDays = 30
 
     private struct FileState: Codable {
-        /// Bytes consumed so far (through the last complete line).
+        /// Bytes consumed so far (through the last complete line); for SQLite, database plus WAL size.
         var size: Int
+        /// Latest write to a SQLite database or its WAL, which can change without changing size.
+        var modified: Date?
         var codex: LogParsers.CodexState?
         var entries: [UsageEntry]
     }
@@ -40,7 +42,7 @@ actor LocalUsageScanner {
                 seen.insert(file.path)
                 let previous = cache.files[file.path]
                 // Same length means no new lines (in-place header rewrites such as session titles).
-                if let previous, previous.size == file.size { continue }
+                if let previous, previous.size == file.size, previous.modified == file.modified { continue }
                 // Grown files continue from the last parsed line; shrunk ones start over.
                 let resume = previous.flatMap { $0.size < file.size ? $0 : nil }
                 cache.files[file.path] = Self.parse(file, source: source, resume: resume)
@@ -73,6 +75,8 @@ actor LocalUsageScanner {
     private struct LogFile {
         let url: URL
         let size: Int
+        /// Set for SQLite databases only.
+        var modified: Date?
         var path: String { url.path }
     }
 
@@ -86,6 +90,7 @@ actor LocalUsageScanner {
         return [
             (.claudeCode, claudeRoots),
             (.codexCLI, [codexHome.appending(path: "sessions"), codexHome.appending(path: "archived_sessions")]),
+            (.antigravityCLI, [AntigravityLogs.conversationsDirectory]),
             (.museCode, [MuseProvider.sessionsDirectory]),
             (.omp, [home.appending(path: ".omp/agent/sessions")]),
         ]
@@ -94,16 +99,25 @@ actor LocalUsageScanner {
     private static func logFiles(in roots: [URL], source: LocalSource, modifiedAfter cutoff: Date) -> [LogFile] {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
         var files: [LogFile] = []
+        let isDatabase = source == .antigravityCLI
         for root in roots {
             guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys,
                                                                   options: [.skipsHiddenFiles]) else { continue }
-            for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+            for case let url as URL in enumerator where url.pathExtension == (isDatabase ? "db" : "jsonl") {
                 if source == .codexCLI && !url.lastPathComponent.hasPrefix("rollout-") { continue }
                 if source == .museCode && url.lastPathComponent != "session.jsonl" { continue }
                 guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true,
-                      let mtime = values.contentModificationDate, mtime >= cutoff,
-                      let size = values.fileSize else { continue }
-                files.append(LogFile(url: url, size: size))
+                      var mtime = values.contentModificationDate, var size = values.fileSize else { continue }
+                if isDatabase {
+                    // Recent writes sit in the WAL until SQLite checkpoints them into the database.
+                    let wal = URL(fileURLWithPath: url.path + "-wal")
+                    if let walValues = try? wal.resourceValues(forKeys: Set(keys)), let walSize = walValues.fileSize {
+                        size += walSize
+                        mtime = max(mtime, walValues.contentModificationDate ?? mtime)
+                    }
+                }
+                guard mtime >= cutoff else { continue }
+                files.append(LogFile(url: url, size: size, modified: isDatabase ? mtime : nil))
             }
         }
         return files
@@ -112,6 +126,10 @@ actor LocalUsageScanner {
     // MARK: Parsing
 
     private static func parse(_ file: LogFile, source: LocalSource, resume: FileState?) -> FileState {
+        if source == .antigravityCLI {
+            // A database, not an append-only log: reread it whole whenever it changes.
+            return FileState(size: file.size, modified: file.modified, entries: AntigravityLogs.entries(in: file.url))
+        }
         var state = resume ?? FileState(size: 0, codex: nil, entries: [])
         guard let data = try? Data(contentsOf: file.url, options: .alwaysMapped) else { return state }
         var codex = state.codex ?? LogParsers.CodexState()
@@ -128,6 +146,7 @@ actor LocalUsageScanner {
             case .omp: LogParsers.omp(json)
             case .codexCLI: LogParsers.codex(json, state: &codex, fileStem: stem)
             case .museCode: LogParsers.muse(json, sessionID: sessionDir)
+            case .antigravityCLI: nil
             }
             if let entry { state.entries.append(entry) }
         }

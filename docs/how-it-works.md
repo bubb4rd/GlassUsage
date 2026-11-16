@@ -26,11 +26,10 @@ Spend is read from local session logs in the same way as [ccusage](https://githu
 | Claude Code | `~/.claude/projects/**/*.jsonl`, `~/.config/claude/projects` (or `$CLAUDE_CONFIG_DIR`) | Deduplicated by message id + request id |
 | Codex CLI | `$CODEX_HOME/sessions/**/rollout-*.jsonl`, `archived_sessions` | Cumulative `token_count` deltas; replayed history in forked sessions is skipped |
 | Muse Code | `$XDG_DATA_HOME/muse/sessions/**/session.jsonl` (default `~/.local/share`, or `$MUSE_SESSIONS_DIR`) | `model_completed` events only, deduplicated by stream id + sequence; subagent transcripts are read on their own |
+| Antigravity CLI | `~/.gemini/antigravity-cli/conversations/*.db` | One SQLite database per conversation, opened read-only; each model call's usage record in `gen_metadata`, deduplicated by message id |
 | omp | `~/.omp/agent/sessions/**/*.jsonl` | Uses the cost omp recorded; `anthropic` counts toward Claude, `openai`/`openai-codex` toward Codex |
 
-Antigravity stores conversations in a binary format without token counts, so it has limits but no spend.
-
-- Only logs changed in the last 30 days are read, and each log is parsed incrementally from where the previous scan stopped.
+- Only logs changed in the last 30 days are read, and each log is parsed incrementally from where the previous scan stopped. Antigravity databases are reread whole when they or their write-ahead log change.
 - Parsed entries are cached in `~/Library/Application Support/GlassUsage/local-usage-cache.plist`.
 - Costs are API-equivalent list prices from [LiteLLM's catalog](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json). This is what the tokens would cost on the API, not what a subscription bills you. The catalog is refreshed daily, and a built-in table covers offline use.
 

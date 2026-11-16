@@ -44,6 +44,33 @@ import Testing
         }
     }
 
+    private func bytes(_ hex: String) -> ArraySlice<UInt8> {
+        ArraySlice(stride(from: 0, to: hex.count, by: 2).map {
+            let start = hex.index(hex.startIndex, offsetBy: $0)
+            return UInt8(hex[start..<hex.index(start, offsetBy: 2)], radix: 16)!
+        })
+    }
+
+    /// A `gen_metadata.data` row from Antigravity CLI 1.5.9, trimmed to the fields GlassUsage reads.
+    @Test func antigravityGenerationSeparatesCacheReadsFromInput() throws {
+        let row = bytes("0ac601225708f50b10f05618d21128946c30183a28626f742d62366566383335392d303634632d343435352d383633622d37363364333264323364386348f10650e10a5a1731597a37616f4b32475a5849694c4d50796347733641499a011167656d696e692d342d687964726f67656ea201240a0a6d6f64656c5f656e756d12164d4f44454c5f504c414345484f4c4445525f4d353235a201140a0f6c6173745f737465705f696e646578120132aa011847656d696e69203420487964726f67656e20284869676829")
+        let generation = try #require(AntigravityLogs.generation(row))
+        #expect(generation.model == "gemini-4-hydrogen")
+        #expect(generation.tokens == TokenCounts(input: 11120, output: 2258, cacheRead: 13844, cacheWrite: 0),
+                "output already includes the 881 thinking tokens")
+        #expect(generation.lastStepIndex == 2)
+        #expect(generation.id == "bot-b6ef8359-064c-4455-863b-763d32d23d8c")
+    }
+
+    @Test func antigravityCancelledGenerationHasNoUsage() {
+        #expect(AntigravityLogs.generation(bytes("0a05220308a70a")) == nil)
+    }
+
+    @Test func antigravityFlashPricesWithoutTheCatalog() throws {
+        let price = try #require(PricingTable.builtIn.price(for: "gemini-3.8-flash-n"))
+        #expect(price.output == 3.75 / 1e6)
+    }
+
     @Test func museAllowanceMapsToSessionAndWeek() throws {
         let snapshot = try MuseProvider.parseUsage(try json("""
         {"schema": 1, "allowance": {"tier": "Muse Code Power Usage",
