@@ -62,7 +62,7 @@ Quit GlassUsage (right-click the icon → Quit) and delete it from Applications,
 
 ## Features
 
-- **Session and weekly limits:** a ring per window, with the time until it resets and the exact reset time. Codex plans with a monthly window show that instead. Antigravity gets one row per model group (Gemini, Claude and GPT, Argon). Rings turn yellow at 50%, orange at 75% and red at 90%.
+- **Session and weekly limits:** a ring per window, with the time until it resets and the exact reset time. Codex plans with a monthly window show that instead. Antigravity meters each model group (Gemini, Claude and GPT, Argon) separately: dots above its rings switch between groups, starting on the one closest to its limit. Rings turn yellow at 50%, orange at 75% and red at 90%.
 - **Menu bar at a glance:** two rings, the session inside and the week outside, with the percentage of whichever limit is closest to running out. It dims when the reading is stale. In Settings, pick which provider it shows, whether it draws both rings or only the session or week, and which percentage follows it: the highest, the session, the week, both side by side, or none.
 - **Token spend** (toggle with **$**): tokens burned today, over 7 days and over 30 days, with what they would cost at API prices, output and cache share, and your top models. Pick how days are drawn in Settings: *Ledger* (a bar per day) or *Calendar* (weeks by weekday, with weekly totals).
 - **Reads local logs:** spend comes from Claude Code, Codex CLI, Muse Code and omp session logs, parsed incrementally like [ccusage](https://github.com/ryoppippi/ccusage). Antigravity logs have no token counts, so it shows limits only.

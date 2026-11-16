@@ -120,23 +120,32 @@ private struct ProviderLimits: View {
     let now: Date
     let showsTitle: Bool
 
+    /// Model group the user picked; nil follows the group closest to its limit, as the menu bar does.
+    @State private var pickedGroup: String?
+
     var body: some View {
+        let group = state.snapshot.flatMap(shownGroup)
         VStack(alignment: .leading, spacing: 0) {
-            if showsTitle {
-                ProviderTitle(provider: provider, state: state).padding(.bottom, 6)
+            if showsTitle || group != nil {
+                HStack(spacing: 7) {
+                    if showsTitle { ProviderTitle(provider: provider, state: state) }
+                    if let snapshot = state.snapshot, let group {
+                        GroupPicker(groups: snapshot.groups, selected: group) { pickedGroup = $0 }
+                    }
+                }
+                .padding(.bottom, showsTitle ? 6 : 8)
             }
 
             if let snapshot = state.snapshot {
-                if snapshot.groups.isEmpty {
-                    // Windows spread so the first starts at the leading edge and the last ends at the trailing one.
-                    HStack(spacing: 0) {
-                        ForEach(Array(snapshot.windows.enumerated()), id: \.element.id) { index, window in
-                            if index > 0 { Spacer(minLength: 12) }
+                // Rings spread so the first starts at the leading edge and the last ends at the trailing one. Keyed
+                // by window length across all groups, so a ring keeps its place (and animates) when the group changes.
+                HStack(spacing: 0) {
+                    ForEach(Array(columns(snapshot).enumerated()), id: \.element) { index, key in
+                        if index > 0 { Spacer(minLength: 12) }
+                        if let window = snapshot.windows.first(where: { $0.group == group && $0.key == key }) {
                             LimitRing(window: window, now: now)
                         }
                     }
-                } else {
-                    GroupedLimits(snapshot: snapshot, now: now)
                 }
             } else if state.error == nil {
                 Text("Checking…").font(.system(size: 11)).foregroundStyle(.tertiary)
@@ -152,6 +161,20 @@ private struct ProviderLimits: View {
         }
         .padding(.top, showsTitle ? 9 : 6)
         .padding(.bottom, 8)
+    }
+
+    /// The model group whose windows show, for providers that meter groups separately; nil for account-wide windows.
+    private func shownGroup(in snapshot: ProviderSnapshot) -> String? {
+        let groups = snapshot.groups
+        guard !groups.isEmpty else { return nil }
+        if let pickedGroup, groups.contains(pickedGroup) { return pickedGroup }
+        return snapshot.mostConstrained?.group ?? groups[0]
+    }
+
+    /// Window keys across all groups, shortest first ("session", "weekly").
+    private func columns(_ snapshot: ProviderSnapshot) -> [String] {
+        var seen = Set<String>()
+        return snapshot.windows.sorted { $0.duration < $1.duration }.map(\.key).filter { seen.insert($0).inserted }
     }
 }
 
@@ -178,85 +201,38 @@ private struct ProviderTitle: View {
     }
 }
 
-/// Providers that meter model groups separately: one row per group, one column per window length.
-private struct GroupedLimits: View {
-    let snapshot: ProviderSnapshot
-    let now: Date
-
-    private struct Column: Hashable {
-        let key: String
-        let label: String
-    }
+/// The shown model group's name, then one dot per group flush with the trailing edge. A dot jumps to its group;
+/// the name steps to the next one.
+private struct GroupPicker: View {
+    let groups: [String]
+    let selected: String
+    let pick: (String) -> Void
 
     var body: some View {
-        let columns = columns
-        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 5) {
-            GridRow {
-                Text("")
-                ForEach(columns, id: \.self) { Text($0.label) }
+        HStack(spacing: 0) {
+            Button {
+                pick(groups[((groups.firstIndex(of: selected) ?? -1) + 1) % groups.count])
+            } label: {
+                Text(selected).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
-            .font(.system(size: 10.5))
-            .foregroundStyle(.tertiary)
-
-            ForEach(snapshot.groups, id: \.self) { group in
-                GridRow {
-                    Text(group)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    ForEach(columns, id: \.self) { column in
-                        if let window = snapshot.windows.first(where: { $0.group == group && $0.key == column.key }) {
-                            CompactLimit(window: window, now: now)
-                        } else {
-                            Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-                        }
-                    }
+            .buttonStyle(.plain)
+            .help("Show the next model group")
+            Spacer(minLength: 8)
+            ForEach(groups, id: \.self) { name in
+                Button { pick(name) } label: {
+                    Circle()
+                        .fill(name == selected ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.track))
+                        .frame(width: 6, height: 6)
+                        .frame(width: 13, height: 14)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .help(name)
+                .accessibilityLabel(name)
+                .accessibilityAddTraits(name == selected ? .isSelected : [])
             }
         }
-        .monospacedDigit()
-    }
-
-    /// Window lengths across all groups, shortest first ("5h", "week").
-    private var columns: [Column] {
-        var seen = Set<String>()
-        return snapshot.windows.sorted { $0.duration < $1.duration }
-            .filter { seen.insert($0.key).inserted }
-            .map { Column(key: $0.key, label: $0.shortLabel) }
-    }
-}
-
-/// One grouped window: a small ring in the band color, the percent used and the countdown.
-private struct CompactLimit: View {
-    let window: UsageWindow
-    let now: Date
-
-    var body: some View {
-        let band = Theme.Band(percent: window.percent)
-        HStack(spacing: 5) {
-            ZStack {
-                Circle().stroke(Theme.track, lineWidth: 2.5)
-                Circle()
-                    .trim(from: 0, to: max(window.fraction, 0.01))
-                    .stroke(band.color, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-            }
-            .frame(width: 12, height: 12)
-            Text("\(Int(window.percent.rounded()))%")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(band == .critical ? AnyShapeStyle(Theme.critical) : AnyShapeStyle(.primary))
-                .frame(minWidth: 32, alignment: .leading)
-            if let reset = window.resetsAt {
-                Text(Format.until(reset, now: now))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .help(window.resetsAt.map { "Resets \(Format.clock($0, now: now))" } ?? "")
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(window.group ?? "") \(window.title) \(Format.percent(window.percent)) used"
-            + (window.resetsAt.map { ", resets \(Format.clock($0, now: now))" } ?? ""))
+        .padding(.trailing, -3)
     }
 }
 
@@ -315,7 +291,7 @@ private struct LimitRing: View {
             withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4)) { shown = value }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(window.title) \(Format.percent(window.percent)) used"
+        .accessibilityLabel("\(window.group.map { "\($0) " } ?? "")\(window.title) \(Format.percent(window.percent)) used"
             + (window.resetsAt.map { ", resets \(Format.clock($0, now: now))" } ?? ""))
     }
 }
