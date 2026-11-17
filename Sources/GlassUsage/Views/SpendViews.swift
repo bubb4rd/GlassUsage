@@ -435,6 +435,7 @@ private enum SpendColumn {
 private struct BreakdownRows: View {
     let summary: SpendSummary
     @Binding var breakdown: SpendBreakdown
+    @Environment(\.appSettings) private var settings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -464,6 +465,11 @@ private struct BreakdownRows: View {
                             ProjectIcon(project: project)
                         }
                         .reveal(after: Self.rowDelay(index))
+                    }
+                    if let settings, !settings.logosFromProtectedFolders, !settings.logoHintDismissed,
+                       summary.projects.contains(where: { ProjectIcons.isProtected($0.path) }) {
+                        LogoHint(settings: settings)
+                            .reveal(after: Self.rowDelay(summary.projects.count))
                     }
                 }
             }
@@ -495,6 +501,45 @@ private struct BreakdownRows: View {
         .frame(height: 24)
         .help("\(help) · \(share(tokens, of: summary.tokens.total)) of tokens")
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// Offered under the projects while some are in folders macOS guards and their logos are off. Turning
+/// them on here is what sets off macOS's permission prompt; the panel never does on its own.
+private struct LogoHint: View {
+    let settings: AppSettings
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                settings.logosFromProtectedFolders = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 9, weight: .semibold))
+                        .frame(width: 14)
+                    Text("Show logos from Documents & Desktop")
+                }
+                .contentShape(.rect)
+            }
+            .foregroundStyle(.secondary)
+            .help("Read each project's app icon or logo. macOS asks for access to these folders first.")
+            Spacer(minLength: 6)
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { settings.logoHintDismissed = true }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .frame(width: 16, height: 16)
+                    .contentShape(.rect)
+            }
+            .foregroundStyle(.tertiary)
+            .help("Hide. Logos can be turned on in Settings.")
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 11.5))
+        .frame(height: 22)
+        .transition(.opacity)
     }
 }
 

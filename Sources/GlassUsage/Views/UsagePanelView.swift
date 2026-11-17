@@ -84,7 +84,7 @@ struct UsagePanelView: View {
                 if settings.showSpend {
                     SpendSection(summary: summary, range: $model.range, breakdown: $model.breakdown,
                                  style: settings.spendView, isLoading: store.localReports.isEmpty)
-                        .environment(\.logosFromProtectedFolders, settings.logosFromProtectedFolders)
+                        .environment(\.appSettings, settings)
                         // The same gap as between providers, so every block sits the same distance apart.
                         .padding(.top, 9)
                         .reveal(after: Motion.step * Double(providers.count + 1))

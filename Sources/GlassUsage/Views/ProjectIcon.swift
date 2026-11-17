@@ -7,9 +7,9 @@ struct ProjectIcon: View {
     let project: ProjectSpend
     var size: CGFloat = 14
 
-    @Environment(\.logosFromProtectedFolders) private var logosFromProtectedFolders
+    @Environment(\.appSettings) private var settings
     private var store: ProjectIconStore { .shared }
-    private var mayRead: Bool { logosFromProtectedFolders || !ProjectIcons.isProtected(project.path) }
+    private var mayRead: Bool { settings?.logosFromProtectedFolders == true || !ProjectIcons.isProtected(project.path) }
 
     var body: some View {
         content
@@ -59,8 +59,8 @@ struct ProjectIcon: View {
 }
 
 extension EnvironmentValues {
-    /// Mirrors `AppSettings.logosFromProtectedFolders` for the spend rows.
-    @Entry var logosFromProtectedFolders = false
+    /// The spend rows read and offer to turn on `logosFromProtectedFolders`.
+    @Entry var appSettings: AppSettings? = nil
 }
 
 /// Logos found so far, kept for the app's lifetime; each folder is searched once, off the main actor.

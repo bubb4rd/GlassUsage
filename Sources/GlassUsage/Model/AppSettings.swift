@@ -31,6 +31,8 @@ final class AppSettings {
     /// Look for project logos in folders macOS guards (Documents, Desktop, Downloads, cloud and external drives),
     /// which asks for access the first time. Elsewhere logos need no permission and are always looked up.
     var logosFromProtectedFolders: Bool { didSet { defaults.set(logosFromProtectedFolders, forKey: Keys.protectedLogos) } }
+    /// The Projects list's offer to turn `logosFromProtectedFolders` on was closed.
+    var logoHintDismissed: Bool { didSet { defaults.set(logoHintDismissed, forKey: Keys.logoHintDismissed) } }
 
     var launchAtLogin: Bool {
         get {
@@ -67,6 +69,7 @@ final class AppSettings {
             Keys.menuBarProvider: ProviderID.claude.rawValue,
             Keys.refresh: 5,
             Keys.protectedLogos: false,
+            Keys.logoHintDismissed: false,
         ]
         for (provider, paths) in installed { registered[Keys.enabled(provider)] = paths.contains(where: fm.fileExists) }
         defaults.register(defaults: registered)
@@ -86,6 +89,7 @@ final class AppSettings {
         spendView = SpendView(rawValue: defaults.string(forKey: Keys.spendView) ?? "") ?? .ledger
         limitAlert = LimitAlertLevel(rawValue: defaults.string(forKey: Keys.limitAlert) ?? "") ?? .off
         logosFromProtectedFolders = defaults.bool(forKey: Keys.protectedLogos)
+        logoHintDismissed = defaults.bool(forKey: Keys.logoHintDismissed)
     }
 
     var enabledProviders: [ProviderID] {
@@ -112,6 +116,7 @@ final class AppSettings {
         static let refresh = "refreshMinutes"
         static let limitAlert = "limitAlert"
         static let protectedLogos = "logosFromProtectedFolders"
+        static let logoHintDismissed = "logoHintDismissed"
     }
 }
 
