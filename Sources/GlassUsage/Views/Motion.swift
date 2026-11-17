@@ -11,7 +11,7 @@ extension EnvironmentValues {
 /// Timing for blocks and graphs entering and leaving the panel.
 enum Motion {
     /// Blocks drop into place with a hint of overshoot.
-    static let enter = Animation.spring(duration: 0.45, bounce: 0.18)
+    static let enter = Animation.spring(duration: 0.4, bounce: 0.18)
     /// Rings sweep and bars grow along a long ease-out.
     static let draw = Animation.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.6)
     /// Everything folds at once on close, inside the window's fade.

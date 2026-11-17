@@ -102,8 +102,9 @@ final class GlassPanel: NSPanel {
         orderFrontRegardless()
         makeKey()
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.32
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
+            // Gentle enough at the start that the unroll still shows while the fade comes up.
+            context.duration = 0.36
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 0.75, 0.25, 1)
             animator().alphaValue = 1
             animator().setFrame(restingFrame, display: true)
         }

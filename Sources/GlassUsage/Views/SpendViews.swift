@@ -475,7 +475,7 @@ private struct BreakdownRows: View {
     }
 
     /// Rows follow the chart above them, one after another.
-    private static func rowDelay(_ index: Int) -> Double { 0.12 + 0.035 * Double(index) }
+    private static func rowDelay(_ index: Int) -> Double { 0.1 + 0.03 * Double(index) }
 
     private func row<Icon: View>(_ name: String, tokens: Int, cost: Double, help: String,
                                  @ViewBuilder icon: () -> Icon) -> some View {
