@@ -458,9 +458,9 @@ private struct BreakdownRows: View {
                         .reveal(after: Self.rowDelay(index))
                     }
                 case .projects:
-                    ForEach(Array(summary.projects.prefix(5).enumerated()), id: \.element.id) { index, project in
+                    ForEach(Array(summary.projects.enumerated()), id: \.element.id) { index, project in
                         row(project.name, tokens: project.tokens.total, cost: project.cost,
-                            help: project.path.isEmpty ? "Muse Code and Antigravity logs don't record a project folder" : project.path) {
+                            help: project.path.isEmpty ? "Smaller projects, temporary folders and sessions without a project folder" : project.path) {
                             ProjectIcon(project: project)
                         }
                         .reveal(after: Self.rowDelay(index))

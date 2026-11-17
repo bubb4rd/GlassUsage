@@ -63,6 +63,35 @@ import Testing
         #expect(entry.project == "/work/app")
     }
 
+    private func projectSummary(_ projects: [(String?, Int)]) -> [ProjectSpend] {
+        let now = Date.now
+        let entries = projects.enumerated().map { index, project in
+            UsageEntry(key: "\(index)", at: now, provider: .claude, source: .omp, model: "unpriced-model",
+                       tokens: TokenCounts(input: project.1, output: 0, cacheRead: 0, cacheWrite: 0),
+                       cacheWrite1h: 0, recordedCost: nil, project: project.0)
+        }
+        return SpendSummary(reports: [LocalUsageReport.build(provider: .claude, entries: entries, pricing: .builtIn, days: 30, now: now)],
+                            range: .today).projects
+    }
+
+    @Test func smallAndTemporaryProjectsFoldIntoOtherLast() {
+        let projects = projectSummary([
+            ("/w/a", 3000), ("/w/b", 2000), ("/w/c", 1000), ("/w/tiny", 10), (nil, 500),
+            ("/private/var/folders/68/x/T/resume-llm", 400), ("/tmp/run", 100),
+        ])
+        #expect(projects.map(\.name) == ["a", "b", "c", "Other"], "below 1% and temporary folders aren't projects")
+        #expect(projects.last?.tokens.total == 1010, "Other keeps their tokens so the rows add up")
+    }
+
+    @Test func projectRowsCapAtFiveIncludingOther() {
+        let five = projectSummary((1...5).map { ("/w/p\($0)", 1000) })
+        #expect(five.count == 5 && !five.contains { $0.path.isEmpty }, "five projects fit without an Other row")
+
+        let six = projectSummary((1...6).map { ("/w/p\($0)", 1000 * $0) })
+        #expect(six.map(\.name) == ["p6", "p5", "p4", "p3", "Other"])
+        #expect(six.last?.tokens.total == 3000)
+    }
+
     @Test func projectsRankAcrossProvidersWithDistinctNames() {
         let home = URL.homeDirectory.path
         let now = Date.now
@@ -80,8 +109,8 @@ import Testing
         }
         let projects = SpendSummary(reports: reports, range: .today).projects
 
-        #expect(projects.map(\.name) == ["work/app", "personal/app", "Other", "~"], "one project across providers, most tokens first")
-        #expect(projects.map(\.tokens.total) == [500, 400, 100, 50])
+        #expect(projects.map(\.name) == ["work/app", "personal/app", "~", "Other"], "one project across providers, Other last")
+        #expect(projects.map(\.tokens.total) == [500, 400, 50, 100])
     }
 
     @Test func codexForkSkipsReplayedHistory() throws {

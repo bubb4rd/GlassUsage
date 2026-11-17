@@ -16,15 +16,15 @@ actor LocalUsageScanner {
         /// Latest write to a SQLite database or its WAL, which can change without changing size.
         var modified: Date?
         var codex: LogParsers.CodexState?
-        /// omp's session folder, read from the log's header line.
+        /// The session folder from an omp header or Muse Code metadata record.
         var project: String? = nil
         var entries: [UsageEntry]
     }
 
     /// One log's parse state as stored in `local-usage-cache/<SHA-1 of the log path>.plist`.
     private struct StoredFile: Codable {
-        /// 2: entries carry their project folder.
-        static let currentVersion = 2
+        /// 2: entries carry their project folder. 3: Antigravity and Muse Code entries do too.
+        static let currentVersion = 3
         var version = currentVersion
         let path: String
         let state: FileState
@@ -152,13 +152,19 @@ actor LocalUsageScanner {
             case .claudeCode: LogParsers.claudeCode(json)
             case .omp: LogParsers.omp(json, project: &project)
             case .codexCLI: LogParsers.codex(json, state: &codex, fileStem: stem)
-            case .museCode: LogParsers.muse(json, sessionID: sessionDir)
+            case .museCode: LogParsers.muse(json, sessionID: sessionDir, project: &project)
             case .antigravityCLI: nil
             }
             if let entry { state.entries.append(entry) }
         }
         if source == .codexCLI { state.codex = codex }
         state.project = project
+        // Muse Code can log its folder after the first completions; fill those in once, when it appears.
+        if source == .museCode, let project, resume?.project == nil {
+            for index in state.entries.indices where state.entries[index].project == nil {
+                state.entries[index].project = project
+            }
+        }
         return state
     }
 

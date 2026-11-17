@@ -1,7 +1,7 @@
 import Foundation
 
 /// Parses one session log line at a time. Lines arrive in file order; parsers that carry
-/// state across lines (Codex, omp's project folder) persist it in `FileState` so appends parse incrementally.
+/// state across lines (Codex, the project folder of omp and Muse Code) persist it in `FileState` so appends parse incrementally.
 nonisolated enum LogParsers {
     /// Byte patterns a line must contain to be worth decoding.
     static func needles(for source: LocalSource) -> [[UInt8]] {
@@ -9,7 +9,7 @@ nonisolated enum LogParsers {
         case .claudeCode: [Array(#""usage""#.utf8)]
         case .omp: [Array(#""usage""#.utf8), Array(#""type":"session""#.utf8)]
         case .codexCLI: [Array("token_count".utf8), Array("turn_context".utf8), Array("session_meta".utf8)]
-        case .museCode: [Array("model_completed".utf8)]
+        case .museCode: [Array("model_completed".utf8), Array("runtime.session.metadata".utf8)]
         case .antigravityCLI: []  // SQLite, read by AntigravityLogs
         }
     }
@@ -77,8 +77,13 @@ nonisolated enum LogParsers {
     // MARK: Muse Code ($XDG_DATA_HOME/muse/sessions/YYYY/MM/DD/<session>/session.jsonl)
 
     /// Counts `model_completed` events only; a parent session's workflow aggregates repeat what
-    /// its `subagent/*/session.jsonl` transcripts already record.
-    static func muse(_ json: JSON, sessionID: String) -> UsageEntry? {
+    /// its `subagent/*/session.jsonl` transcripts already record. `project` takes the first
+    /// `runtime.session.metadata` record's `workspace_root`, which may follow the first completion.
+    static func muse(_ json: JSON, sessionID: String, project: inout String?) -> UsageEntry? {
+        if json["payload_type"].string == "runtime.session.metadata" {
+            project = project ?? json["payload"]["record"]["workspace_root"].string
+            return nil
+        }
         let event = json["payload"]["event"]
         let usage = event["usage"]
         guard event["kind"].string == "model_completed", usage.exists, let model = event["model"].string,
@@ -94,7 +99,7 @@ nonisolated enum LogParsers {
         let ordinal = json["sequence"].double.map { String(Int($0)) } ?? String(Int(recordedAt))
         let key = "muse:\(stream):\(ordinal):\(tokens.input):\(tokens.output):\(tokens.cacheRead):\(tokens.cacheWrite)"
         return UsageEntry(key: key, at: at, provider: .muse, source: .museCode, model: model, tokens: tokens,
-                          cacheWrite1h: 0, recordedCost: nil)
+                          cacheWrite1h: 0, recordedCost: nil, project: project)
     }
 
     /// `recorded_at` is microseconds today; accept milliseconds and seconds so a unit change can't

@@ -8,6 +8,7 @@ import SQLite3
 /// - `gen_metadata.data`: field 1 is the call; 1.4 its usage, 1.17[].2 retries, 1.19/1.21 model id and
 ///   name, 1.9.4 its time, and the 1.20 label `last_step_index` the step it answered.
 /// - `steps.metadata`: 9 usage, 28[].2 retries, 24.12/24.8 model id and name, 8 or 1 its time.
+/// `trajectory_metadata_blob.data` holds the conversation's start time (2) and workspace URI (7, also 1.1).
 /// Copies of one call share a response id, so each is counted once.
 nonisolated enum AntigravityLogs {
     /// T3 Code runs Antigravity with `GEMINI_HOME` at `<T3 home>/userdata/providers/antigravity/<sha256(instance id)>`,
@@ -76,9 +77,12 @@ nonisolated enum AntigravityLogs {
             }
         }
         var conversationTime: Date?
+        var project: String?
         if tables.contains("trajectory_metadata_blob") {
             query(db, "SELECT data FROM trajectory_metadata_blob") { row in
-                conversationTime = conversationTime ?? ProtoMessage(blob(row, 0)).message(2).flatMap(timestamp)
+                let metadata = ProtoMessage(blob(row, 0))
+                conversationTime = conversationTime ?? metadata.message(2).flatMap(timestamp)
+                project = project ?? workspace(metadata)
             }
         }
         conversationTime = conversationTime
@@ -108,11 +112,18 @@ nonisolated enum AntigravityLogs {
                         ?? (record.modelID > 0 ? "antigravity-model-\(record.modelID)" : "antigravity")
                     entries.append(UsageEntry(key: key, at: at ?? conversationTime, provider: .antigravity,
                                               source: .antigravityCLI, model: model, tokens: record.tokens,
-                                              cacheWrite1h: 0, recordedCost: nil))
+                                              cacheWrite1h: 0, recordedCost: nil, project: project))
                 }
             }
         }
         return entries
+    }
+
+    /// The folder a conversation ran in, from its `trajectory_metadata_blob` row.
+    static func workspace(_ metadata: ProtoMessage) -> String? {
+        guard let uri = metadata.string(7) ?? metadata.message(1)?.string(1),
+              let url = URL(string: uri), url.isFileURL else { return nil }
+        return url.path
     }
 
     /// One `gen_metadata.data` blob.

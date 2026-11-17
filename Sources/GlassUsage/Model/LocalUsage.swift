@@ -104,7 +104,7 @@ nonisolated struct LocalUsageReport: Sendable {
             usage.tokens += entry.tokens
             if let cost { usage.cost += cost } else { usage.unpricedTokens += entry.tokens.total }
             days[day, default: DayUsage(day: day)].byModel[entry.model] = usage
-            let project = entry.project ?? ""
+            let project = entry.project.flatMap { ProjectNames.isTemporary($0) ? nil : $0 } ?? ""
             days[day, default: DayUsage(day: day)].byProject[project, default: ProjectUsage()].tokens += entry.tokens
             days[day, default: DayUsage(day: day)].byProject[project, default: ProjectUsage()].cost += cost ?? 0
         }
@@ -144,7 +144,7 @@ nonisolated struct ModelSpend: Identifiable, Sendable {
 }
 
 nonisolated struct ProjectSpend: Identifiable, Sendable {
-    /// Project folder; "" for usage from logs that don't record one.
+    /// Project folder; "" for Other: logs without a folder, temporary folders, and projects too small for a row.
     let path: String
     var tokens = TokenCounts()
     var cost: Double = 0
@@ -171,12 +171,17 @@ nonisolated struct SpendSummary: Sendable {
     var days: [DaySpend] = []
     /// Highest token count first.
     var models: [ModelSpend] = []
-    /// Highest token count first.
+    /// At most `projectRows`, highest token count first, adding up to the range: projects with at least
+    /// `minProjectShare` of its tokens, then Other for the rest.
     var projects: [ProjectSpend] = []
     /// Providers with any usage in the chart, in fixed order.
     var providers: [ProviderID] = []
     var sources: [LocalSource] = []
     var hasUnpriced = false
+
+    static let projectRows = 5
+    /// Smaller projects fold into Other, so one-off folders don't take a row.
+    static let minProjectShare = 0.01
 
     init(reports: [LocalUsageReport], range: SpendRange) {
         let chartCount = max(range.dayCount, 7)
@@ -215,10 +220,22 @@ nonisolated struct SpendSummary: Sendable {
         }
         days = byDay.values.sorted { $0.day < $1.day }
         self.models = models.values.sorted { $0.tokens.total > $1.tokens.total }
-        let names = ProjectNames.display(Array(projects.keys))
-        self.projects = projects.values
-            .map { project in var project = project; project.name = names[project.path] ?? project.path; return project }
-            .sorted { $0.tokens.total > $1.tokens.total }
+        let ranked = projects.values.sorted { $0.tokens.total > $1.tokens.total }
+        let minTokens = Double(tokens.total) * Self.minProjectShare
+        let large = ranked.filter { !$0.path.isEmpty && Double($0.tokens.total) >= minTokens }
+        let fitsAll = large.count == ranked.count && large.count <= Self.projectRows
+        var shown = Array(large.prefix(fitsAll ? Self.projectRows : Self.projectRows - 1))
+        if shown.count < ranked.count {
+            let shownPaths = Set(shown.map(\.path))
+            var other = ProjectSpend(path: "")
+            for project in ranked where !shownPaths.contains(project.path) {
+                other.tokens += project.tokens
+                other.cost += project.cost
+            }
+            shown.append(other)
+        }
+        let names = ProjectNames.display(shown.map(\.path))
+        self.projects = shown.map { project in var project = project; project.name = names[project.path] ?? project.path; return project }
         self.providers = ProviderID.allCases.filter(providers.contains)
         self.sources = LocalSource.allCases.filter(sources.contains)
     }
@@ -238,6 +255,12 @@ nonisolated enum ProjectNames {
             if lastCounts[String(last), default: 0] > 1, parts.count > 1 { return (path, "\(parts[parts.count - 2])/\(last)") }
             return (path, String(last))
         })
+    }
+
+    /// Scratch folders scripts run agents in (`$TMPDIR`, `/tmp`) aren't projects anyone would recognise.
+    static func isTemporary(_ path: String) -> Bool {
+        path == "/tmp" || path == "/private/tmp"
+            || ["/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/"].contains { path.hasPrefix($0) }
     }
 }
 

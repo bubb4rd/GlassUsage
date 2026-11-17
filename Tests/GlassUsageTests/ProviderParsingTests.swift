@@ -128,7 +128,8 @@ import Testing
         "usage":{"input_tokens":26964,"output_tokens":379,"cached_tokens":5105,"cache_write_tokens":0,"cache_read_tokens":5105,"reasoning_tokens":278},\
         "duration_ms":5819,"model":"muse-spark-1.3-contributor"}}}
         """)
-        let entry = try #require(LogParsers.muse(line, sessionID: "dir-name"))
+        var project: String?
+        let entry = try #require(LogParsers.muse(line, sessionID: "dir-name", project: &project))
 
         #expect(entry.provider == .muse)
         #expect(entry.model == "muse-spark-1.3-contributor")
@@ -142,7 +143,36 @@ import Testing
         {"recorded_at":1789790455896395,"payload":{"event":{"kind":"workflow_child_lifecycle","model":"muse-spark-1.3",\
         "usage":{"input_tokens":10,"output_tokens":5}}}}
         """)
-        #expect(LogParsers.muse(line, sessionID: "s") == nil)
+        var project: String?
+        #expect(LogParsers.muse(line, sessionID: "s", project: &project) == nil)
+    }
+
+    /// Line shape from tokscale's Muse Code parser; only the first record's folder counts.
+    @Test func museMetadataSetsTheProjectOnce() throws {
+        func metadata(_ root: String) throws -> JSON {
+            try json("""
+            {"schema_version":1,"stream":{"kind":"session","id":"01a0b7d1"},"sequence":3,"recorded_at":1789790369778491,\
+            "record_type":"event","payload_type":"runtime.session.metadata","payload_schema_version":1,\
+            "payload":{"kind":"metadata","record":{"workspace_root":"\(root)","provider_id":"meta","model_id":"muse-spark-1.3"}}}
+            """)
+        }
+        var project: String?
+        #expect(LogParsers.muse(try metadata("/work/app"), sessionID: "s", project: &project) == nil)
+        #expect(LogParsers.muse(try metadata("/work/other"), sessionID: "s", project: &project) == nil)
+        let entry = try #require(LogParsers.muse(try json("""
+        {"stream":{"id":"01a0b7d1"},"sequence":4,"recorded_at":1789790455896395,"payload":{"event":{"kind":"model_completed",\
+        "usage":{"input_tokens":10,"output_tokens":5},"model":"muse-spark-1.3"}}}
+        """), sessionID: "s", project: &project))
+        #expect(entry.project == "/work/app")
+    }
+
+    @Test func antigravityWorkspaceIsAFolderPath() {
+        #expect(AntigravityLogs.workspace(ProtoMessage(bytes("3a1566696c653a2f2f2f776f726b2f6d79253230617070"))) == "/work/my app",
+                "field 7, percent-decoded")
+        #expect(AntigravityLogs.workspace(ProtoMessage(bytes("0a120a1066696c653a2f2f2f776f726b2f617069"))) == "/work/api",
+                "falls back to 1.1")
+        #expect(AntigravityLogs.workspace(ProtoMessage(bytes("3a1568747470733a2f2f6578616d706c652e636f6d2f78"))) == nil,
+                "only file URIs are folders")
     }
 
     @Test func museModelsPriceWithoutTheCatalog() throws {
