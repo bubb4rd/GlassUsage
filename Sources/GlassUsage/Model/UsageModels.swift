@@ -57,6 +57,30 @@ nonisolated struct UsageWindow: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// Where a window is heading at the rate it has been used so far.
+nonisolated enum Pace: Hashable, Sendable {
+    /// Too little of the window has passed, or nothing is used yet, to tell.
+    case early
+    /// Ends the window at `projected` of the limit (0–1).
+    case onPace(projected: Double)
+    /// Reaches the limit at `emptyAt`, `lockout` before the window resets.
+    case runsOut(emptyAt: Date, lockout: TimeInterval)
+}
+
+nonisolated extension UsageWindow {
+    /// Projects the use so far across the whole window. Read it on `ProviderSnapshot.current(at:)` windows, so a
+    /// window whose reset has passed (no reset time) has no projection.
+    func pace(at now: Date) -> Pace? {
+        guard let resetsAt, duration > 0 else { return nil }
+        let elapsed = min(max(1 - resetsAt.timeIntervalSince(now) / duration, 0), 1)
+        guard elapsed >= 0.15, percent > 0 else { return .early }
+        let projected = fraction / elapsed
+        guard projected >= 1 else { return .onPace(projected: projected) }
+        let emptyAt = now.addingTimeInterval((1 - fraction) * elapsed * duration / fraction)
+        return .runsOut(emptyAt: emptyAt, lockout: resetsAt.timeIntervalSince(emptyAt))
+    }
+}
+
 nonisolated struct ProviderSnapshot: Codable, Hashable, Sendable {
     let provider: ProviderID
     let plan: String?

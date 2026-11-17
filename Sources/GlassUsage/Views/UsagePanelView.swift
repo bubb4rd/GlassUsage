@@ -261,26 +261,46 @@ private struct GroupPicker: View {
     }
 }
 
-/// Session or weekly window as a ring in the status-band color, with its countdown and reset time.
+/// Session or weekly window as a ring in the status-band color, with its countdown and reset time. A fainter arc
+/// ahead of the fill shows where the window ends at the current pace; hovering swaps the text to that projection.
 private struct LimitRing: View {
     let window: UsageWindow
     let now: Date
     /// After the enclosing block starts entering, so rings sweep one after another.
     let delay: Double
 
+    @State private var hovering = false
     @Environment(\.revealDelay) private var base
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Revealing { swept in ring(swept: swept || reduceMotion) }
+            .onHover { hovering = $0 }
     }
 
     @ViewBuilder
     private func ring(swept: Bool) -> some View {
-        let band = Theme.Band(percent: window.percent)
+        let band = Theme.Band(window: window, now: now)
+        let usage = Theme.Band(percent: window.percent)
+        let pace = window.pace(at: now)
+        // Where the fill ends by the reset at this pace: the projection, or the whole ring when it runs out first.
+        let ghost: Double? = switch pace {
+        case .onPace(let projected) where projected > window.fraction: projected
+        case .runsOut where window.fraction < 1: 1
+        default: nil
+        }
+        let showsPace = hovering && pace != nil
         HStack(spacing: 11) {
             ZStack {
                 Circle().stroke(Theme.track, lineWidth: 7)
+                if let ghost {
+                    Circle()
+                        .trim(from: 0, to: swept ? ghost : 0)
+                        .stroke(band.color.opacity(0.3), style: StrokeStyle(lineWidth: 7, lineCap: ghost < 1 ? .round : .butt))
+                        .rotationEffect(.degrees(-90))
+                        .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: ghost)
+                        .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
+                }
                 Circle()
                     .trim(from: 0, to: max(swept ? window.fraction : 0, 0.01))
                     .stroke(band.color, style: StrokeStyle(lineWidth: 7, lineCap: .round))
@@ -295,37 +315,84 @@ private struct LimitRing: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
-                .foregroundStyle(band == .critical ? AnyShapeStyle(Theme.critical) : AnyShapeStyle(.primary))
+                .foregroundStyle(usage == .critical ? AnyShapeStyle(Theme.critical) : AnyShapeStyle(.primary))
             }
             .padding(3)
             .frame(width: 68, height: 68)
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 4) {
-                    Text(window.shortLabel).foregroundStyle(.secondary)
-                    if band == .critical {
-                        Text("▲ near limit").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(Theme.critical)
-                    }
-                }
-                .font(.system(size: 12))
-                if let reset = window.resetsAt {
-                    Text(Format.until(reset, now: now))
-                        .font(.system(size: 15.5, weight: .semibold))
-                    // The full tag when the column has room, else a shorter one; the tooltip always has it all.
-                    ViewThatFits(in: .horizontal) {
-                        Text(Format.clock(reset, now: now))
-                        Text(Format.clock(reset, now: now, compact: true))
-                    }
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .help(Format.clock(reset, now: now))
+            // Both texts always take their space, so the column keeps the wider one's width and the ring, spaced
+            // from its neighbor by a Spacer, stays put when hovering swaps them.
+            ZStack(alignment: .leading) {
+                resetText(nearLimit: usage == .critical)
+                    .opacity(showsPace ? 0 : 1)
+                if let pace {
+                    paceText(pace).opacity(showsPace ? 1 : 0)
                 }
             }
+            .animation(.easeOut(duration: 0.12), value: showsPace)
         }
         .monospacedDigit()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(window.group.map { "\($0) " } ?? "")\(window.title) \(Format.percent(window.percent)) used"
-            + (window.resetsAt.map { ", resets \(Format.clock($0, now: now))" } ?? ""))
+            + (window.resetsAt.map { ", resets \(Format.clock($0, now: now))" } ?? "")
+            + (pace.flatMap(paceNote) ?? ""))
+    }
+
+    /// At rest: the window, the time until it resets and the reset time.
+    private func resetText(nearLimit: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 4) {
+                Text(window.shortLabel).foregroundStyle(.secondary)
+                if nearLimit {
+                    Text("▲ near limit").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(Theme.critical)
+                }
+            }
+            .font(.system(size: 12))
+            if let reset = window.resetsAt {
+                Text(Format.until(reset, now: now))
+                    .font(.system(size: 15.5, weight: .semibold))
+                // The full tag when the column has room, else a shorter one; the tooltip always has it all.
+                ViewThatFits(in: .horizontal) {
+                    Text(Format.clock(reset, now: now))
+                    Text(Format.clock(reset, now: now, compact: true))
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .help(Format.clock(reset, now: now))
+            }
+        }
+    }
+
+    /// On hover: when the window hits its limit at this pace, or where it ends by the reset.
+    private func paceText(_ pace: Pace) -> some View {
+        // `compact` stands in for `small` when the column is too narrow for it, as the reset tag does.
+        let (big, small, compact): (String, String, String) = switch pace {
+        case .early: ("—", "too early to tell", "too early to tell")
+        case .onPace(let projected): ("~\(Format.percent(projected * 100))", "when it resets", "when it resets")
+        case .runsOut(let emptyAt, _):
+            (Format.until(emptyAt, now: now), "100% \(Format.hour(emptyAt, now: now))", Format.hour(emptyAt, now: now))
+        }
+        return VStack(alignment: .leading, spacing: 3) {
+            Text("at this pace").font(.system(size: 12)).foregroundStyle(.secondary)
+            Text(big).font(.system(size: 15.5, weight: .semibold))
+            ViewThatFits(in: .horizontal) {
+                Text(small)
+                Text(compact)
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(.tertiary)
+            .help(small)
+        }
+        .lineLimit(1)
+    }
+
+    /// The projection for VoiceOver, which can't hover.
+    private func paceNote(_ pace: Pace) -> String? {
+        switch pace {
+        case .early: nil
+        case .onPace(let projected): ", on pace to end near \(Format.percent(projected * 100))"
+        case .runsOut(let emptyAt, _): ", runs out around \(Format.hour(emptyAt, now: now, spoken: true)) at this pace"
+        }
     }
 }

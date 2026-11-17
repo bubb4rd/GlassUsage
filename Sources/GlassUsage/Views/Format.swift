@@ -62,6 +62,20 @@ enum Format {
         let day = date.formatted(.dateTime.month(.abbreviated).day())
         return compact ? day : "\(day) \(time)"
     }
+
+    /// A projected time to the nearest hour: "today ~4 PM", "Wed ~4 PM", "Nov 29 ~4 PM". `spoken` writes it out
+    /// for VoiceOver: "today 4 PM", "Wednesday 4 PM".
+    static func hour(_ date: Date, now: Date, spoken: Bool = false, calendar: Calendar = .current) -> String {
+        let hour = calendar.dateInterval(of: .hour, for: date.addingTimeInterval(1800))?.start ?? date
+        let day = if calendar.isDate(hour, inSameDayAs: now) {
+            "today"
+        } else if hour.timeIntervalSince(now) < 6.5 * 86_400 {
+            hour.formatted(.dateTime.weekday(spoken ? .wide : .abbreviated))
+        } else {
+            hour.formatted(.dateTime.month(spoken ? .wide : .abbreviated).day())
+        }
+        return "\(day) \(spoken ? "" : "~")\(hour.formatted(.dateTime.hour()))"
+    }
 }
 
 extension UsageWindow {

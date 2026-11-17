@@ -35,7 +35,8 @@ enum Theme {
         }
     }
 
-    enum Band {
+    /// Ordered by severity, so `max` picks the worse of two.
+    enum Band: Comparable {
         case good, warning, serious, critical
 
         init(percent: Double) {
@@ -45,6 +46,17 @@ enum Theme {
             case 50...: self = .warning
             default: self = .good
             }
+        }
+
+        /// The worse of how much is used and where the pace leads: close to the limit by the reset is a warning,
+        /// running out before it serious, and out for over a quarter of the window critical.
+        init(window: UsageWindow, now: Date) {
+            let pace: Band = switch window.pace(at: now) {
+            case .onPace(let projected) where projected > 0.9: .warning
+            case .runsOut(_, let lockout): lockout > 0.25 * window.duration ? .critical : .serious
+            default: .good
+            }
+            self = max(Band(percent: window.percent), pace)
         }
 
         var color: Color {
