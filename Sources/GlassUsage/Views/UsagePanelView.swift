@@ -385,14 +385,15 @@ private struct LimitRing: View {
     /// On hover: when the window hits its limit at this pace, or where it ends by the reset.
     private func paceText(_ pace: Pace, shown: Bool) -> some View {
         // `compact` stands in for `small` when the column is too narrow for it, as the reset tag does.
-        let (big, small, compact): (String, String, String) = switch pace {
-        case .early: ("—", "too early to tell", "too early to tell")
-        case .onPace(let projected): ("~\(Format.percent(projected * 100))", "when it resets", "when it resets")
+        let (title, big, small, compact): (String, String, String, String) = switch pace {
+        case .early: ("at this pace", "—", "too early to tell", "too early to tell")
+        case .onPace(let projected): ("at this pace", "~\(Format.percent(projected * 100))", "when it resets", "when it resets")
         case .runsOut(let emptyAt, _):
-            (Format.until(emptyAt, now: now), "100% \(Format.hour(emptyAt, now: now))", Format.hour(emptyAt, now: now))
+            (emptyAt > now ? "runs out in" : "runs out", Format.until(emptyAt, now: now), Format.hour(emptyAt, now: now),
+             emptyAt.formatted(.dateTime.month(.abbreviated).day()))
         }
         return VStack(alignment: .leading, spacing: 3) {
-            Text("at this pace").font(.system(size: 12)).foregroundStyle(.secondary)
+            Text(title).font(.system(size: 12)).foregroundStyle(.secondary)
                 .swapLine(0, shown: shown)
             Text(big).font(.system(size: 15.5, weight: .semibold))
                 .swapLine(1, shown: shown)
