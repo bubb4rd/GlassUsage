@@ -460,10 +460,7 @@ private struct BreakdownRows: View {
                     ForEach(Array(summary.projects.prefix(5).enumerated()), id: \.element.id) { index, project in
                         row(project.name, tokens: project.tokens.total, cost: project.cost,
                             help: project.path.isEmpty ? "Muse Code and Antigravity logs don't record a project folder" : project.path) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 10.5))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 12)
+                            ProjectIcon(project: project)
                         }
                         .reveal(after: Self.rowDelay(index))
                     }
@@ -480,6 +477,7 @@ private struct BreakdownRows: View {
                                  @ViewBuilder icon: () -> Icon) -> some View {
         HStack(spacing: 8) {
             icon()
+                .frame(width: 14)
             Text(name)
                 .fontWeight(.medium)
                 .lineLimit(1)
