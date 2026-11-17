@@ -409,7 +409,7 @@ private enum SpendColumn {
     static let cost: CGFloat = 72
 }
 
-/// Top models or projects for the range, switched by the picker above them: tokens and cost.
+/// Top models or projects for the range, stepped through with the arrows above them: tokens and cost.
 /// Share of tokens is in the tooltip.
 private struct BreakdownRows: View {
     let summary: SpendSummary
@@ -417,7 +417,16 @@ private struct BreakdownRows: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            PillPicker(options: SpendBreakdown.allCases.map { ($0, $0.label) }, selection: $breakdown)
+            HStack {
+                Text("TOP")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                CycleArrows(options: SpendBreakdown.allCases.map { ($0, $0.label) }, selection: breakdown,
+                            noun: "list") { breakdown = $0 }
+            }
+            .frame(height: 22)
             VStack(spacing: 0) {
                 switch breakdown {
                 case .models:

@@ -145,3 +145,60 @@ struct PillPicker<Value: Hashable>: View {
         .animation(.easeOut(duration: 0.15), value: selection)
     }
 }
+
+/// The selected option between two chevrons that step back and forth through `options`, wrapping around.
+/// The label keeps the width of the longest option so the arrows stay put while cycling.
+struct CycleArrows<Value: Equatable>: View {
+    let options: [(value: Value, label: String)]
+    let selection: Value
+    /// What the arrows step through, for their tooltips: "model group", "list".
+    let noun: String
+    let select: (Value) -> Void
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ArrowButton(symbol: "chevron.left", help: "Previous \(noun)") { step(-1) }
+            ZStack {
+                ForEach(options.indices, id: \.self) { Text(options[$0].label).hidden() }
+                Text(options.first { $0.value == selection }?.label ?? "")
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.opacity)
+            }
+            .font(.system(size: 11.5, weight: .medium))
+            .lineLimit(1)
+            .padding(.horizontal, 4)
+            .animation(.easeOut(duration: 0.15), value: options.firstIndex { $0.value == selection })
+            ArrowButton(symbol: "chevron.right", help: "Next \(noun)") { step(1) }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func step(_ delta: Int) {
+        guard !options.isEmpty else { return }
+        let index = options.firstIndex { $0.value == selection } ?? 0
+        select(options[(index + delta + options.count) % options.count].value)
+    }
+}
+
+private struct ArrowButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .semibold))
+                .frame(width: 16, height: 18)
+                .background(RoundedRectangle(cornerRadius: 5).fill(hovering ? Theme.fill2 : Theme.fill1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(hovering ? .primary : .secondary)
+        .onHover { hovering = $0 }
+        .help(help)
+        .accessibilityLabel(help)
+    }
+}

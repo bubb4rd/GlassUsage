@@ -203,8 +203,7 @@ private struct ProviderTitle: View {
     }
 }
 
-/// The shown model group's name, then one dot per group flush with the trailing edge. A dot jumps to its group;
-/// the name steps to the next one.
+/// The shown model group's name between arrows that step through the groups, flush with the trailing edge.
 private struct GroupPicker: View {
     let groups: [String]
     let selected: String
@@ -212,29 +211,9 @@ private struct GroupPicker: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Button {
-                pick(groups[((groups.firstIndex(of: selected) ?? -1) + 1) % groups.count])
-            } label: {
-                Text(selected).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-            }
-            .buttonStyle(.plain)
-            .help("Show the next model group")
             Spacer(minLength: 8)
-            ForEach(groups, id: \.self) { name in
-                Button { pick(name) } label: {
-                    Circle()
-                        .fill(name == selected ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.track))
-                        .frame(width: 6, height: 6)
-                        .frame(width: 13, height: 14)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(name)
-                .accessibilityLabel(name)
-                .accessibilityAddTraits(name == selected ? .isSelected : [])
-            }
+            CycleArrows(options: groups.map { ($0, $0) }, selection: selected, noun: "model group", select: pick)
         }
-        .padding(.trailing, -3)
     }
 }
 
