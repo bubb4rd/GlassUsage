@@ -148,7 +148,10 @@ nonisolated struct ProviderState: Sendable {
 }
 
 nonisolated enum AppPaths {
+    /// A dev build (bundle id `….dev`) keeps its own folder: the log cache drops files from other cache
+    /// versions, so a dev build and the installed app sharing one would keep reparsing each other's logs.
     static var supportDirectory: URL {
-        URL.applicationSupportDirectory.appending(path: "GlassUsage", directoryHint: .isDirectory)
+        let name = Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true ? "GlassUsage Dev" : "GlassUsage"
+        return URL.applicationSupportDirectory.appending(path: name, directoryHint: .isDirectory)
     }
 }
