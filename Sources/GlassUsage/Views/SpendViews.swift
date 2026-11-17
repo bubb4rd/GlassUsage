@@ -5,6 +5,7 @@ import SwiftUI
 struct SpendSection: View {
     let summary: SpendSummary
     @Binding var range: SpendRange
+    @Binding var breakdown: SpendBreakdown
     let style: SpendView
     let isLoading: Bool
 
@@ -27,8 +28,8 @@ struct SpendSection: View {
                     .padding(.top, 6)
             } else {
                 switch style {
-                case .ledger: SpendLedger(summary: summary, range: range)
-                case .calendar: SpendCalendar(summary: summary, range: range)
+                case .ledger: SpendLedger(summary: summary, range: range, breakdown: $breakdown)
+                case .calendar: SpendCalendar(summary: summary, range: range, breakdown: $breakdown)
                 }
             }
         }
@@ -73,6 +74,7 @@ struct SpendSection: View {
 private struct SpendLedger: View {
     let summary: SpendSummary
     let range: SpendRange
+    @Binding var breakdown: SpendBreakdown
 
     @State private var hovered: Date?
 
@@ -132,7 +134,7 @@ private struct SpendLedger: View {
             .foregroundStyle(.secondary)
             .padding(.top, 10)
 
-            ModelRows(summary: summary).padding(.top, 6)
+            BreakdownRows(summary: summary, breakdown: $breakdown).padding(.top, 8)
         }
         .monospacedDigit()
     }
@@ -204,6 +206,7 @@ private struct HorizontalRule: Shape {
 private struct SpendCalendar: View {
     let summary: SpendSummary
     let range: SpendRange
+    @Binding var breakdown: SpendBreakdown
 
     @State private var hovered: Date?
 
@@ -252,7 +255,7 @@ private struct SpendCalendar: View {
 
             if !summary.models.isEmpty {
                 Rectangle().fill(Theme.hair).frame(height: 0.5).padding(.top, 5).padding(.bottom, 3)
-                ModelRows(summary: summary)
+                BreakdownRows(summary: summary, breakdown: $breakdown)
             }
             if summary.tokens.total > 0 {
                 chips.padding(.top, 7)
@@ -406,33 +409,59 @@ private enum SpendColumn {
     static let cost: CGFloat = 72
 }
 
-/// Top models for the range: tokens and cost. Share of tokens is in the tooltip.
-private struct ModelRows: View {
+/// Top models or projects for the range, switched by the picker above them: tokens and cost.
+/// Share of tokens is in the tooltip.
+private struct BreakdownRows: View {
     let summary: SpendSummary
+    @Binding var breakdown: SpendBreakdown
 
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(summary.models.prefix(5)) { model in
-                HStack(spacing: 8) {
-                    ProviderLogo(provider: model.provider, size: 12)
-                    Text(model.displayName)
-                        .fontWeight(.medium)
-                        .lineLimit(1)
-                    Spacer(minLength: 6)
-                    Text(Format.tokens(model.tokens.total))
-                        .fontWeight(.semibold)
-                        .frame(width: SpendColumn.tokens, alignment: .trailing)
-                    Text(Format.usd(model.cost))
-                        .foregroundStyle(.secondary)
-                        .frame(width: SpendColumn.cost, alignment: .trailing)
+        VStack(alignment: .leading, spacing: 2) {
+            PillPicker(options: SpendBreakdown.allCases.map { ($0, $0.label) }, selection: $breakdown)
+            VStack(spacing: 0) {
+                switch breakdown {
+                case .models:
+                    ForEach(summary.models.prefix(5)) { model in
+                        row(model.displayName, tokens: model.tokens.total, cost: model.cost, help: model.model) {
+                            ProviderLogo(provider: model.provider, size: 12)
+                        }
+                    }
+                case .projects:
+                    ForEach(summary.projects.prefix(5)) { project in
+                        row(project.name, tokens: project.tokens.total, cost: project.cost,
+                            help: project.path.isEmpty ? "Muse Code and Antigravity logs don't record a project folder" : project.path) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 12)
+                        }
+                    }
                 }
-                .font(.system(size: 12.5))
-                .frame(height: 24)
-                .help("\(model.model) · \(share(model.tokens.total, of: summary.tokens.total)) of tokens")
-                .accessibilityElement(children: .combine)
             }
         }
         .monospacedDigit()
+    }
+
+    private func row<Icon: View>(_ name: String, tokens: Int, cost: Double, help: String,
+                                 @ViewBuilder icon: () -> Icon) -> some View {
+        HStack(spacing: 8) {
+            icon()
+            Text(name)
+                .fontWeight(.medium)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 6)
+            Text(Format.tokens(tokens))
+                .fontWeight(.semibold)
+                .frame(width: SpendColumn.tokens, alignment: .trailing)
+            Text(Format.usd(cost))
+                .foregroundStyle(.secondary)
+                .frame(width: SpendColumn.cost, alignment: .trailing)
+        }
+        .font(.system(size: 12.5))
+        .frame(height: 24)
+        .help("\(help) · \(share(tokens, of: summary.tokens.total)) of tokens")
+        .accessibilityElement(children: .combine)
     }
 }
 

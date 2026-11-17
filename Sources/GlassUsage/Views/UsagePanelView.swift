@@ -31,6 +31,7 @@ struct UsagePanelView: View {
         .font(.system(size: 13))
         .animation(Self.resize, value: model.showingSettings)
         .animation(Self.resize, value: model.range)
+        .animation(Self.resize, value: model.breakdown)
         .onGeometryChange(for: CGSize.self, of: \.size) { onSizeChange($0) }
     }
 
@@ -76,8 +77,8 @@ struct UsagePanelView: View {
             } else {
                 LimitsSection(store: store, providers: providers, now: now)
                 if settings.showSpend {
-                    SpendSection(summary: summary, range: $model.range, style: settings.spendView,
-                                 isLoading: store.localReports.isEmpty)
+                    SpendSection(summary: summary, range: $model.range, breakdown: $model.breakdown,
+                                 style: settings.spendView, isLoading: store.localReports.isEmpty)
                         .blockDivider()
                         .transition(.opacity)
                 }

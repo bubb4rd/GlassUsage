@@ -37,7 +37,7 @@ import Testing
             "info":{"total_token_usage":{"input_tokens":\(input),"cached_input_tokens":\(cached),"output_tokens":\(output),"total_tokens":\(input + output)}}}}
             """), state: &state, fileStem: "rollout-a")
         }
-        _ = LogParsers.codex(try json(#"{"type":"session_meta","timestamp":"2026-11-16T10:00:00Z","payload":{"id":"s1"}}"#),
+        _ = LogParsers.codex(try json(#"{"type":"session_meta","timestamp":"2026-11-16T10:00:00Z","payload":{"id":"s1","cwd":"/work/api"}}"#),
                              state: &state, fileStem: "rollout-a")
         _ = LogParsers.codex(try json(#"{"type":"turn_context","payload":{"model":"gpt-5.1-codex-max"}}"#),
                              state: &state, fileStem: "rollout-a")
@@ -45,11 +45,43 @@ import Testing
         let first = try #require(try tokenCount(1000, 600, 50, at: 1))
         #expect(first.tokens == TokenCounts(input: 400, output: 50, cacheRead: 600, cacheWrite: 0), "cached input is inside input")
         #expect(first.model == "gpt-5.1-codex-max")
+        #expect(first.project == "/work/api")
 
         #expect(try tokenCount(1000, 600, 50, at: 2) == nil, "a repeated snapshot adds nothing")
 
         let second = try #require(try tokenCount(1500, 900, 80, at: 3))
         #expect(second.tokens == TokenCounts(input: 200, output: 30, cacheRead: 300, cacheWrite: 0))
+    }
+
+    @Test func ompMessagesTakeTheSessionHeadersFolder() throws {
+        var project: String?
+        #expect(LogParsers.omp(try json(#"{"type":"session","version":3,"id":"s","cwd":"/work/app"}"#), project: &project) == nil)
+        let entry = try #require(LogParsers.omp(try json("""
+        {"type":"message","id":"m1","timestamp":"2026-11-16T10:00:00Z","message":{"role":"assistant","provider":"anthropic",\
+        "model":"claude-opus-5-5","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0}}}
+        """), project: &project))
+        #expect(entry.project == "/work/app")
+    }
+
+    @Test func projectsRankAcrossProvidersWithDistinctNames() {
+        let home = URL.homeDirectory.path
+        let now = Date.now
+        func entry(_ key: String, _ provider: ProviderID, _ project: String?, _ tokens: Int) -> UsageEntry {
+            UsageEntry(key: key, at: now, provider: provider, source: .omp, model: "unpriced-model",
+                       tokens: TokenCounts(input: tokens, output: 0, cacheRead: 0, cacheWrite: 0),
+                       cacheWrite1h: 0, recordedCost: nil, project: project)
+        }
+        let entries = [
+            entry("a", .claude, "\(home)/work/app", 300), entry("b", .codex, "\(home)/work/app", 200),
+            entry("c", .claude, "\(home)/personal/app", 400), entry("d", .muse, nil, 100), entry("e", .claude, home, 50),
+        ]
+        let reports = [ProviderID.claude, .codex, .muse].map {
+            LocalUsageReport.build(provider: $0, entries: entries, pricing: .builtIn, days: 30, now: now)
+        }
+        let projects = SpendSummary(reports: reports, range: .today).projects
+
+        #expect(projects.map(\.name) == ["work/app", "personal/app", "Other", "~"], "one project across providers, most tokens first")
+        #expect(projects.map(\.tokens.total) == [500, 400, 100, 50])
     }
 
     @Test func codexForkSkipsReplayedHistory() throws {

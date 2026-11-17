@@ -1,12 +1,13 @@
 import Foundation
 
 /// Parses one session log line at a time. Lines arrive in file order; parsers that carry
-/// state across lines (Codex) persist it in `FileState.codex` so appends parse incrementally.
+/// state across lines (Codex, omp's project folder) persist it in `FileState` so appends parse incrementally.
 nonisolated enum LogParsers {
     /// Byte patterns a line must contain to be worth decoding.
     static func needles(for source: LocalSource) -> [[UInt8]] {
         switch source {
-        case .claudeCode, .omp: [Array(#""usage""#.utf8)]
+        case .claudeCode: [Array(#""usage""#.utf8)]
+        case .omp: [Array(#""usage""#.utf8), Array(#""type":"session""#.utf8)]
         case .codexCLI: [Array("token_count".utf8), Array("turn_context".utf8), Array("session_meta".utf8)]
         case .museCode: [Array("model_completed".utf8)]
         case .antigravityCLI: []  // SQLite, read by AntigravityLogs
@@ -33,12 +34,17 @@ nonisolated enum LogParsers {
         }
         return UsageEntry(key: key, at: at, provider: .claude, source: .claudeCode, model: model, tokens: tokens,
                           cacheWrite1h: usage["cache_creation"]["ephemeral_1h_input_tokens"].int,
-                          recordedCost: json["costUSD"].double)
+                          recordedCost: json["costUSD"].double, project: json["cwd"].string)
     }
 
     // MARK: omp (~/.omp/agent/sessions/**/*.jsonl)
 
-    static func omp(_ json: JSON) -> UsageEntry? {
+    /// `project` carries the folder from the session header to the messages after it.
+    static func omp(_ json: JSON, project: inout String?) -> UsageEntry? {
+        if json["type"].string == "session" {
+            project = json["cwd"].string ?? project
+            return nil
+        }
         guard json["type"].string == "message" else { return nil }
         let message = json["message"]
         let usage = message["usage"]
@@ -53,7 +59,7 @@ nonisolated enum LogParsers {
         // Forked sessions copy earlier entries verbatim (same id and timestamp).
         let key = "omp:\(json["id"].string ?? ""):\(json["timestamp"].string ?? ""):\(tokens.total)"
         return UsageEntry(key: key, at: at, provider: provider, source: .omp, model: model, tokens: tokens,
-                          cacheWrite1h: usage["cttl"]["ephemeral1h"].int, recordedCost: recorded)
+                          cacheWrite1h: usage["cttl"]["ephemeral1h"].int, recordedCost: recorded, project: project)
     }
 
     private static func provider(vendor: String?, model: String) -> ProviderID? {
@@ -111,6 +117,8 @@ nonisolated enum LogParsers {
         var forkedAt: Date?
         /// Last cumulative [input, cached, output, reasoning, total].
         var lastTotals: [Int]?
+        /// Working folder from `session_meta`, updated by `turn_context`.
+        var cwd: String?
     }
 
     static func codex(_ json: JSON, state: inout CodexState, fileStem: String) -> UsageEntry? {
@@ -119,9 +127,11 @@ nonisolated enum LogParsers {
         case "session_meta":
             state.rootID = payload["forked_from_id"].string ?? payload["id"].string
             if payload["forked_from_id"].exists { state.forkedAt = json["timestamp"].isoDate }
+            if let cwd = payload["cwd"].string { state.cwd = cwd }
             return nil
         case "turn_context":
             if let model = payload["model"].string { state.model = model }
+            if let cwd = payload["cwd"].string { state.cwd = cwd }
             return nil
         case "event_msg" where payload["type"].string == "token_count":
             break
@@ -160,7 +170,7 @@ nonisolated enum LogParsers {
         let tokens = TokenCounts(input: max(usage[0] - usage[1], 0), output: usage[2], cacheRead: usage[1], cacheWrite: 0)
         guard tokens.total > 0 else { return nil }
         return UsageEntry(key: key, at: at, provider: .codex, source: .codexCLI, model: state.model, tokens: tokens,
-                          cacheWrite1h: 0, recordedCost: nil)
+                          cacheWrite1h: 0, recordedCost: nil, project: state.cwd)
     }
 }
 

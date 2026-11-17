@@ -44,6 +44,8 @@ nonisolated struct UsageEntry: Codable, Hashable, Sendable {
     let cacheWrite1h: Int
     /// Cost the tool itself recorded, when it records one.
     let recordedCost: Double?
+    /// Folder the session ran in, for tools whose logs record it (Claude Code, Codex CLI, omp).
+    var project: String? = nil
 }
 
 nonisolated struct ModelUsage: Hashable, Sendable {
@@ -53,9 +55,16 @@ nonisolated struct ModelUsage: Hashable, Sendable {
     var unpricedTokens = 0
 }
 
+nonisolated struct ProjectUsage: Hashable, Sendable {
+    var tokens = TokenCounts()
+    var cost: Double = 0
+}
+
 nonisolated struct DayUsage: Identifiable, Hashable, Sendable {
     let day: Date
     var byModel: [String: ModelUsage] = [:]
+    /// Keyed by project folder; "" collects usage from logs that don't record one.
+    var byProject: [String: ProjectUsage] = [:]
     var id: Date { day }
     var cost: Double { byModel.values.reduce(0) { $0 + $1.cost } }
     var tokens: Int { byModel.values.reduce(0) { $0 + $1.tokens.total } }
@@ -95,6 +104,9 @@ nonisolated struct LocalUsageReport: Sendable {
             usage.tokens += entry.tokens
             if let cost { usage.cost += cost } else { usage.unpricedTokens += entry.tokens.total }
             days[day, default: DayUsage(day: day)].byModel[entry.model] = usage
+            let project = entry.project ?? ""
+            days[day, default: DayUsage(day: day)].byProject[project, default: ProjectUsage()].tokens += entry.tokens
+            days[day, default: DayUsage(day: day)].byProject[project, default: ProjectUsage()].cost += cost ?? 0
         }
 
         let allDays = (0..<dayCount).map { offset -> DayUsage in
@@ -115,6 +127,13 @@ nonisolated enum SpendRange: String, CaseIterable, Identifiable, Sendable {
     var phrase: String { switch self { case .today: "today"; case .week: "last 7 days"; case .month: "last 30 days" } }
 }
 
+/// What the list under the spend chart ranks.
+nonisolated enum SpendBreakdown: String, CaseIterable, Sendable {
+    case models, projects
+
+    var label: String { switch self { case .models: "Models"; case .projects: "Projects" } }
+}
+
 nonisolated struct ModelSpend: Identifiable, Sendable {
     let model: String
     let provider: ProviderID
@@ -122,6 +141,16 @@ nonisolated struct ModelSpend: Identifiable, Sendable {
     var cost: Double = 0
     var id: String { "\(provider.rawValue):\(model)" }
     var displayName: String { ModelNames.display(model) }
+}
+
+nonisolated struct ProjectSpend: Identifiable, Sendable {
+    /// Project folder; "" for usage from logs that don't record one.
+    let path: String
+    var tokens = TokenCounts()
+    var cost: Double = 0
+    /// Folder name, with its parent when another project has the same name.
+    var name = ""
+    var id: String { path }
 }
 
 nonisolated struct DaySpend: Identifiable, Sendable {
@@ -142,6 +171,8 @@ nonisolated struct SpendSummary: Sendable {
     var days: [DaySpend] = []
     /// Highest token count first.
     var models: [ModelSpend] = []
+    /// Highest token count first.
+    var projects: [ProjectSpend] = []
     /// Providers with any usage in the chart, in fixed order.
     var providers: [ProviderID] = []
     var sources: [LocalSource] = []
@@ -151,6 +182,7 @@ nonisolated struct SpendSummary: Sendable {
         let chartCount = max(range.dayCount, 7)
         var byDay: [Date: DaySpend] = [:]
         var models: [String: ModelSpend] = [:]
+        var projects: [String: ProjectSpend] = [:]
         var providers = Set<ProviderID>()
         var sources = Set<LocalSource>()
 
@@ -175,12 +207,37 @@ nonisolated struct SpendSummary: Sendable {
                     models[key, default: ModelSpend(model: usage.model, provider: report.provider)].tokens += usage.tokens
                     models[key, default: ModelSpend(model: usage.model, provider: report.provider)].cost += usage.cost
                 }
+                for (path, usage) in day.byProject {
+                    projects[path, default: ProjectSpend(path: path)].tokens += usage.tokens
+                    projects[path, default: ProjectSpend(path: path)].cost += usage.cost
+                }
             }
         }
         days = byDay.values.sorted { $0.day < $1.day }
         self.models = models.values.sorted { $0.tokens.total > $1.tokens.total }
+        let names = ProjectNames.display(Array(projects.keys))
+        self.projects = projects.values
+            .map { project in var project = project; project.name = names[project.path] ?? project.path; return project }
+            .sorted { $0.tokens.total > $1.tokens.total }
         self.providers = ProviderID.allCases.filter(providers.contains)
         self.sources = LocalSource.allCases.filter(sources.contains)
+    }
+}
+
+nonisolated enum ProjectNames {
+    /// "/Users/me/SWE/app" → "app"; "work/app" and "personal/app" when two folders share a name;
+    /// "~" for the home folder and "Other" for usage without a folder.
+    static func display(_ paths: [String], home: String = URL.homeDirectory.path) -> [String: String] {
+        func components(_ path: String) -> [Substring] { path.split(separator: "/") }
+        let lastCounts = Dictionary(paths.map { (components($0).last.map(String.init) ?? "", 1) }, uniquingKeysWith: +)
+        return Dictionary(uniqueKeysWithValues: paths.map { path -> (String, String) in
+            if path.isEmpty { return (path, "Other") }
+            if path == home { return (path, "~") }
+            let parts = components(path)
+            guard let last = parts.last else { return (path, path) }
+            if lastCounts[String(last), default: 0] > 1, parts.count > 1 { return (path, "\(parts[parts.count - 2])/\(last)") }
+            return (path, String(last))
+        })
     }
 }
 

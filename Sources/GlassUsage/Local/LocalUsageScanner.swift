@@ -16,12 +16,15 @@ actor LocalUsageScanner {
         /// Latest write to a SQLite database or its WAL, which can change without changing size.
         var modified: Date?
         var codex: LogParsers.CodexState?
+        /// omp's session folder, read from the log's header line.
+        var project: String? = nil
         var entries: [UsageEntry]
     }
 
     /// One log's parse state as stored in `local-usage-cache/<SHA-1 of the log path>.plist`.
     private struct StoredFile: Codable {
-        static let currentVersion = 1
+        /// 2: entries carry their project folder.
+        static let currentVersion = 2
         var version = currentVersion
         let path: String
         let state: FileState
@@ -136,6 +139,7 @@ actor LocalUsageScanner {
         var state = resume ?? FileState(size: 0, codex: nil, entries: [])
         guard let data = try? Data(contentsOf: file.url, options: .alwaysMapped) else { return state }
         var codex = state.codex ?? LogParsers.CodexState()
+        var project = state.project
         let stem = file.url.deletingPathExtension().lastPathComponent
         // Muse Code names the session's directory, not the file.
         let sessionDir = file.url.deletingLastPathComponent().lastPathComponent
@@ -146,7 +150,7 @@ actor LocalUsageScanner {
             guard let json = try? JSON(data: line) else { return }
             let entry: UsageEntry? = switch source {
             case .claudeCode: LogParsers.claudeCode(json)
-            case .omp: LogParsers.omp(json)
+            case .omp: LogParsers.omp(json, project: &project)
             case .codexCLI: LogParsers.codex(json, state: &codex, fileStem: stem)
             case .museCode: LogParsers.muse(json, sessionID: sessionDir)
             case .antigravityCLI: nil
@@ -154,6 +158,7 @@ actor LocalUsageScanner {
             if let entry { state.entries.append(entry) }
         }
         if source == .codexCLI { state.codex = codex }
+        state.project = project
         return state
     }
 

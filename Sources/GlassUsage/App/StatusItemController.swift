@@ -239,6 +239,7 @@ final class StatusItemController: NSObject {
 final class PanelModel {
     var showingSettings = false
     var range: SpendRange = .today
+    var breakdown: SpendBreakdown = .models
 }
 
 private final class HoverTracker: NSResponder {

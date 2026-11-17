@@ -33,6 +33,7 @@ Spend is read from local session logs in the same way as [ccusage](https://githu
 
 - Only logs changed in the last 30 days are read, and each log is parsed incrementally from where the previous scan stopped. Antigravity databases are reread whole when they or their write-ahead log change.
 - Parsed entries are cached in `~/Library/Application Support/GlassUsage/local-usage-cache/`, one file per log, so a scan rewrites only the logs that changed.
+- Projects are the folder a session ran in: `cwd` on Claude Code lines, the session header in omp, and `session_meta`/`turn_context` in Codex. Muse Code and Antigravity logs don't record one, so their usage is listed as *Other*.
 - Costs are API-equivalent list prices from [LiteLLM's catalog](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json). This is what the tokens would cost on the API, not what a subscription bills you. The catalog is refreshed daily, and a built-in table covers offline use.
 
 ## Network access
