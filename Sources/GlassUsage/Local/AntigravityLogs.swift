@@ -19,9 +19,13 @@ nonisolated enum AntigravityLogs {
         return t3Home.appending(path: "userdata/providers/antigravity", directoryHint: .isDirectory)
     }
 
-    /// The Antigravity CLI's own history, plus every T3 Code Antigravity account.
+    /// The Antigravity CLI, desktop app and IDE share one conversation format, each in its own app data folder
+    /// (`~/.gemini/antigravity-backup` only holds copies). Plus every T3 Code Antigravity account.
     static func conversationDirectories() -> [URL] {
-        var directories = [AntigravityProvider.stateDirectory.appending(path: "conversations")]
+        let gemini = URL.homeDirectory.appending(path: ".gemini", directoryHint: .isDirectory)
+        var directories = ["antigravity-cli", "antigravity", "antigravity-ide"].map {
+            gemini.appending(path: "\($0)/conversations", directoryHint: .isDirectory)
+        }
         let profiles = (try? FileManager.default.contentsOfDirectory(at: t3ProfilesDirectory, includingPropertiesForKeys: nil)) ?? []
         for profile in profiles {
             directories.append(profile.appending(path: "antigravity-acp/conversations", directoryHint: .isDirectory))
@@ -111,7 +115,7 @@ nonisolated enum AntigravityLogs {
                     let model = record.model ?? models[record.modelID]
                         ?? (record.modelID > 0 ? "antigravity-model-\(record.modelID)" : "antigravity")
                     entries.append(UsageEntry(key: key, at: at ?? conversationTime, provider: .antigravity,
-                                              source: .antigravityCLI, model: model, tokens: record.tokens,
+                                              source: .antigravity, model: model, tokens: record.tokens,
                                               cacheWrite1h: 0, recordedCost: nil, project: project))
                 }
             }
@@ -129,7 +133,8 @@ nonisolated enum AntigravityLogs {
     /// One `gen_metadata.data` blob.
     static func generation(_ blob: ArraySlice<UInt8>) -> Metadata? {
         guard let call = ProtoMessage(blob).message(1) else { return nil }
-        let model = modelName(id: call.string(19), name: call.string(21))
+        let placeholder = call.messages(20).first { $0.string(1) == "model_enum" }?.string(2)
+        let model = modelName(id: call.string(19), name: call.string(21), placeholder: placeholder)
         let modelID = call.int(3) != 0 ? call.int(3) : call.message(4)?.int(1) ?? 0
         let lastStep = call.messages(20).first { $0.string(1) == "last_step_index" }?.string(2).flatMap { Int($0) }
         return Metadata(records: records(call, usage: 4, retries: 17, modelID: modelID, model: model),
@@ -163,8 +168,9 @@ nonisolated enum AntigravityLogs {
     }
 
     /// Prefers a catalog-style id ("gemini-3.8-flash-n") and falls back to the display name
-    /// ("Claude 5.5 Opus (Thinking)" → "claude-opus-5-5-thinking"), skipping placeholders ("MODEL_…").
-    static func modelName(id: String?, name: String?) -> String? {
+    /// ("Claude 5.5 Opus (Thinking)" → "claude-opus-5-5-thinking"), then to a known placeholder, skipping
+    /// placeholders ("MODEL_…") and config ids ("gemini-pro-default") when that names the model.
+    static func modelName(id: String?, name: String?, placeholder: String? = nil) -> String? {
         let candidates = [id, name].compactMap { raw -> String? in
             guard var model = raw?.trimmingCharacters(in: .whitespaces).lowercased(), !model.isEmpty else { return nil }
             model = model.replacing(/\s*\(([^)]*)\)$/) { "-\($0.1)" }.replacing(/\s+/, with: "-")
@@ -175,8 +181,21 @@ nonisolated enum AntigravityLogs {
             return model
         }
         return candidates.first { $0.contains(/^(?:gemini-\d|claude-(?:sonnet|opus|haiku)-\d|gpt-)/) }
+            ?? placeholder.flatMap { placeholderModels[$0] }
             ?? candidates.first { !$0.hasPrefix("model_") && !$0.hasPrefix("model-") }
     }
+
+    /// The desktop app names its models only by placeholder and config id ("gemini-pro-default"). These are
+    /// its own catalog's models as of app 2.19.1 (per codeburn); a later build can repoint a placeholder.
+    private static let placeholderModels: [String: String] = [
+        "MODEL_PLACEHOLDER_M16": "gemini-3.1-pro-high",
+        "MODEL_PLACEHOLDER_M37": "gemini-3.1-pro-high",
+        "MODEL_PLACEHOLDER_M36": "gemini-3.1-pro-low",
+        "MODEL_PLACEHOLDER_M84": "gemini-3.5-flash-high",
+        "MODEL_PLACEHOLDER_M18": "gemini-3-flash",
+        "MODEL_PLACEHOLDER_M35": "claude-sonnet-4-6",
+        "MODEL_PLACEHOLDER_M26": "claude-opus-4-6-thinking",
+    ]
 
     private static func timestamp(_ stamp: ProtoMessage) -> Date? {
         guard let seconds = stamp.varint(1), seconds > 0 else { return nil }

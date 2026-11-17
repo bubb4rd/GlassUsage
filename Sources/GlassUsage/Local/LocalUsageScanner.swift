@@ -24,7 +24,8 @@ actor LocalUsageScanner {
     /// One log's parse state as stored in `local-usage-cache/<SHA-1 of the log path>.plist`.
     private struct StoredFile: Codable {
         /// 2: entries carry their project folder. 3: Antigravity and Muse Code entries do too.
-        static let currentVersion = 3
+        /// 4: the Antigravity desktop app's placeholder models are named; its source is `antigravity`.
+        static let currentVersion = 4
         var version = currentVersion
         let path: String
         let state: FileState
@@ -96,7 +97,7 @@ actor LocalUsageScanner {
         return [
             (.claudeCode, claudeRoots),
             (.codexCLI, [codexHome.appending(path: "sessions"), codexHome.appending(path: "archived_sessions")]),
-            (.antigravityCLI, AntigravityLogs.conversationDirectories()),
+            (.antigravity, AntigravityLogs.conversationDirectories()),
             (.museCode, [MuseProvider.sessionsDirectory]),
             (.omp, [home.appending(path: ".omp/agent/sessions")]),
         ]
@@ -105,7 +106,7 @@ actor LocalUsageScanner {
     private static func logFiles(in roots: [URL], source: LocalSource, modifiedAfter cutoff: Date) -> [LogFile] {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
         var files: [LogFile] = []
-        let isDatabase = source == .antigravityCLI
+        let isDatabase = source == .antigravity
         for root in roots {
             guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys,
                                                                   options: [.skipsHiddenFiles]) else { continue }
@@ -132,7 +133,7 @@ actor LocalUsageScanner {
     // MARK: Parsing
 
     private static func parse(_ file: LogFile, source: LocalSource, resume: FileState?) -> FileState {
-        if source == .antigravityCLI {
+        if source == .antigravity {
             // A database, not an append-only log: reread it whole whenever it changes.
             return FileState(size: file.size, modified: file.modified, entries: AntigravityLogs.entries(in: file.url))
         }
@@ -153,7 +154,7 @@ actor LocalUsageScanner {
             case .omp: LogParsers.omp(json, project: &project)
             case .codexCLI: LogParsers.codex(json, state: &codex, fileStem: stem)
             case .museCode: LogParsers.muse(json, sessionID: sessionDir, project: &project)
-            case .antigravityCLI: nil
+            case .antigravity: nil
             }
             if let entry { state.entries.append(entry) }
         }

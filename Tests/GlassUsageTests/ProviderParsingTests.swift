@@ -88,6 +88,15 @@ import Testing
         #expect(AntigravityLogs.modelName(id: "gemini-3.8-flash-n", name: "Gemini 3.8 Flash (Low)") == "gemini-3.8-flash-n")
     }
 
+    /// The desktop app's rows carry only a config id and a placeholder; a named model still wins.
+    @Test func antigravityDesktopPlaceholdersNameTheirModel() throws {
+        let row = bytes("0a48220b08f807106418325a0272319a011267656d696e692d70726f2d64656661756c74a201230a0a6d6f64656c5f656e756d12154d4f44454c5f504c414345484f4c4445525f4d3136")
+        let generation = try #require(AntigravityLogs.generation(row))
+        #expect(generation.records.first?.model == "gemini-3.1-pro-high", "not the config id gemini-pro-default")
+        #expect(AntigravityLogs.modelName(id: "gemini-3.8-flash-n", name: nil, placeholder: "MODEL_PLACEHOLDER_M16") == "gemini-3.8-flash-n")
+        #expect(AntigravityLogs.modelName(id: "gemini-pro-default", name: nil, placeholder: "MODEL_PLACEHOLDER_M999") == "gemini-pro-default")
+    }
+
     @Test func antigravityFlashPricesWithoutTheCatalog() throws {
         let price = try #require(PricingTable.builtIn.price(for: "gemini-3.8-flash-n"))
         #expect(price.output == 3.75 / 1e6)

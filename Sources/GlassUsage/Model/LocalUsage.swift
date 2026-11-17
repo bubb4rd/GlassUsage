@@ -2,13 +2,13 @@ import Foundation
 
 /// Agent tools whose local session logs GlassUsage reads for token counts.
 nonisolated enum LocalSource: String, Codable, CaseIterable, Sendable {
-    case claudeCode, codexCLI, antigravityCLI, museCode, omp
+    case claudeCode, codexCLI, antigravity, museCode, omp
 
     var displayName: String {
         switch self {
         case .claudeCode: "Claude Code"
         case .codexCLI: "Codex CLI"
-        case .antigravityCLI: "Antigravity"
+        case .antigravity: "Antigravity"
         case .museCode: "Muse Code"
         case .omp: "omp"
         }

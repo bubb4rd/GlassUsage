@@ -10,7 +10,7 @@ nonisolated enum LogParsers {
         case .omp: [Array(#""usage""#.utf8), Array(#""type":"session""#.utf8)]
         case .codexCLI: [Array("token_count".utf8), Array("turn_context".utf8), Array("session_meta".utf8)]
         case .museCode: [Array("model_completed".utf8), Array("runtime.session.metadata".utf8)]
-        case .antigravityCLI: []  // SQLite, read by AntigravityLogs
+        case .antigravity: []  // SQLite, read by AntigravityLogs
         }
     }
 
