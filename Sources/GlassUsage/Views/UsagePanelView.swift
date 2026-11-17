@@ -307,10 +307,15 @@ private struct LimitRing: View {
                 if let reset = window.resetsAt {
                     Text(Format.until(reset, now: now))
                         .font(.system(size: 15.5, weight: .semibold))
-                    Text(Format.clock(reset, now: now))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+                    // The full tag when the column has room, else a shorter one; the tooltip always has it all.
+                    ViewThatFits(in: .horizontal) {
+                        Text(Format.clock(reset, now: now))
+                        Text(Format.clock(reset, now: now, compact: true))
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .help(Format.clock(reset, now: now))
                 }
             }
         }

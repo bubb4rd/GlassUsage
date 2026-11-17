@@ -48,17 +48,19 @@ enum Format {
         }
     }
 
-    /// Full reset time for tooltips: "Today at 2:00 AM", "Fri at 2:00 PM", "Nov 29 at 2:00 PM".
-    static func clock(_ date: Date, now: Date, calendar: Calendar = .current) -> String {
+    /// Reset time: "Today 2:00 AM", "Tomorrow 2:00 AM", "Fri 2:00 PM", "Nov 29 2:00 PM".
+    /// `compact` trades words for width where a tag can't fit: "Tue 2:00 AM" for tomorrow, "Nov 29" past a week.
+    static func clock(_ date: Date, now: Date, compact: Bool = false, calendar: Calendar = .current) -> String {
         let time = date.formatted(date: .omitted, time: .shortened)
         if calendar.isDate(date, inSameDayAs: now) { return "Today \(time)" }
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) {
+        if !compact, let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) {
             return "Tomorrow \(time)"
         }
-        let day = date.timeIntervalSince(now) < 6.5 * 86_400
-            ? date.formatted(.dateTime.weekday(.abbreviated))
-            : date.formatted(.dateTime.month(.abbreviated).day())
-        return "\(day) \(time)"
+        if date.timeIntervalSince(now) < 6.5 * 86_400 {
+            return "\(date.formatted(.dateTime.weekday(.abbreviated))) \(time)"
+        }
+        let day = date.formatted(.dateTime.month(.abbreviated).day())
+        return compact ? day : "\(day) \(time)"
     }
 }
 
