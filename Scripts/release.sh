@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds, signs, notarizes and publishes a release, then updates the Sparkle feed and Homebrew cask.
+# Builds, signs, notarizes and publishes a release, then updates the Sparkle feed (appcast branch) and Homebrew cask.
 #
 #   Scripts/release.sh                 notarized release for the version in Support/Info.plist (tag v<version>)
 #   Scripts/release.sh --no-notarize   Developer ID-signed only; Gatekeeper asks users to approve the first launch
@@ -50,7 +50,9 @@ SHA256="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
 echo "$SHA256  $(basename "$ZIP")" > "$ZIP.sha256"
 cat "$ZIP.sha256"
 
-# Sparkle feed. The app reads releases/latest/download/appcast.xml, so every release carries its own.
+# Sparkle feed. The app reads appcast.xml from the appcast branch (raw.githubusercontent.com), which isn't a
+# release asset, so update checks don't count as downloads. Releases still carry a copy for installs from before
+# v1.4.1, which read releases/latest/download/appcast.xml.
 SPARKLE_SIG="$(.build/artifacts/sparkle/Sparkle/bin/sign_update --account "$BUNDLE_ID" "$ZIP")"
 cat > build/appcast.xml <<EOF
 <?xml version="1.0" encoding="utf-8"?>
@@ -79,6 +81,11 @@ else
   git push origin "$TAG"
   gh release create "$TAG" "${ASSETS[@]}" -R "$REPO" --title "GlassUsage $VERSION" --notes "$NOTES"
 fi
+
+# Point the feed at the new release only once its zip is published.
+git fetch -q origin appcast
+FEED_TREE="$(printf '100644 blob %s\tappcast.xml\n' "$(git hash-object -w build/appcast.xml)" | git mktree)"
+git push -q origin "$(git commit-tree "$FEED_TREE" -p FETCH_HEAD -m "appcast: $VERSION")":refs/heads/appcast
 
 # Homebrew cask in the tap.
 TAPDIR="$(mktemp -d)"

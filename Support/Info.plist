@@ -33,7 +33,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://github.com/bubb4rd/GlassUsage/releases/latest/download/appcast.xml</string>
+	<string>https://raw.githubusercontent.com/bubb4rd/GlassUsage/appcast/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>Bs9PlDN5thxQnp34lFL26fsM6IPDjhGft2HBHkcLO/c=</string>
 </dict>

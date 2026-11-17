@@ -14,7 +14,8 @@ Scripts/release.sh
 2. Notarizes the zip with `notarytool`, staples the ticket and checks it with `spctl`.
 3. Signs the zip for Sparkle (EdDSA) and writes `appcast.xml`.
 4. Publishes `GlassUsage-<version>.zip`, its `.sha256` and `appcast.xml` as the GitHub release `v<version>`, with a *What's changed* list built from the commit subjects since the previous tag (version bumps, `release:` and `README` commits left out). If the release already exists, its assets and notes are replaced.
-5. Updates `Casks/glassusage.rb` in [bubb4rd/homebrew-tap](https://github.com/bubb4rd/homebrew-tap).
+5. Commits `appcast.xml` to the `appcast` branch, which is where the app looks for updates.
+6. Updates `Casks/glassusage.rb` in [bubb4rd/homebrew-tap](https://github.com/bubb4rd/homebrew-tap).
 
 `--no-notarize` skips step 2. Gatekeeper then asks users to approve the first launch.
 
@@ -22,7 +23,7 @@ The README never names a version: its badge and download links point at the late
 
 ## How updates reach users
 
-- **Sparkle:** the app's `SUFeedURL` is `https://github.com/bubb4rd/GlassUsage/releases/latest/download/appcast.xml`. Because every release carries its own appcast, publishing a release is all it takes. Sparkle compares `CFBundleVersion`, so that number must go up with every release.
+- **Sparkle:** the app's `SUFeedURL` is `https://raw.githubusercontent.com/bubb4rd/GlassUsage/appcast/appcast.xml`, so publishing a release is all it takes. Sparkle compares `CFBundleVersion`, so that number must go up with every release. The feed lives on a branch rather than as a release asset because GitHub counts every asset fetch as a download, and every daily update check would count. Installs from before v1.4.1 still read `releases/latest/download/appcast.xml`, so each release keeps attaching a copy until they've updated.
 - **Homebrew:** the cask declares `auto_updates true`, so `brew upgrade` leaves updating to Sparkle. New installs get the version in the tap.
 
 ## One-time setup
