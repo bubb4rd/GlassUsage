@@ -28,6 +28,10 @@ final class AppSettings {
     var spendView: SpendView { didSet { defaults.set(spendView.rawValue, forKey: Keys.spendView) } }
     /// Whether the spend charts tell providers apart by gray steps or by each provider's color.
     var spendColors: SpendColors { didSet { defaults.set(spendColors.rawValue, forKey: Keys.spendColors) } }
+    /// Which lists the spend block offers under its chart; none hides the list.
+    var spendLists: Set<SpendBreakdown> {
+        didSet { defaults.set(SpendBreakdown.allCases.filter(spendLists.contains).map(\.rawValue), forKey: Keys.spendLists) }
+    }
     /// Notify when a tracked limit reaches this level, and again when that window resets.
     var limitAlert: LimitAlertLevel { didSet { defaults.set(limitAlert.rawValue, forKey: Keys.limitAlert) } }
     /// Read project folders macOS guards (Documents, Desktop, Downloads, cloud and external drives), which asks for
@@ -73,6 +77,7 @@ final class AppSettings {
             Keys.refresh: 5,
             Keys.protectedFolders: false,
             Keys.logoHintDismissed: false,
+            Keys.spendLists: SpendBreakdown.allCases.map(\.rawValue),
         ]
         for (provider, paths) in installed { registered[Keys.enabled(provider)] = paths.contains(where: fm.fileExists) }
         defaults.register(defaults: registered)
@@ -100,6 +105,7 @@ final class AppSettings {
             defaults.set(colors.rawValue, forKey: Keys.spendColors)
         }
         spendColors = colors
+        spendLists = Set((defaults.stringArray(forKey: Keys.spendLists) ?? []).compactMap(SpendBreakdown.init))
         limitAlert = LimitAlertLevel(rawValue: defaults.string(forKey: Keys.limitAlert) ?? "") ?? .off
         readProtectedFolders = defaults.bool(forKey: Keys.protectedFolders)
         logoHintDismissed = defaults.bool(forKey: Keys.logoHintDismissed)
@@ -117,6 +123,9 @@ final class AppSettings {
         if isOn { enabled.insert(provider) } else { enabled.remove(provider) }
     }
 
+    /// `spendLists` in tab order.
+    var shownSpendLists: [SpendBreakdown] { SpendBreakdown.allCases.filter(spendLists.contains) }
+
     private enum Keys {
         static func enabled(_ provider: ProviderID) -> String { "provider.\(provider.rawValue).enabled" }
         static let hover = "openOnHover"
@@ -126,6 +135,7 @@ final class AppSettings {
         static let spend = "showSpend"
         static let spendView = "spendView"
         static let spendColors = "spendColors"
+        static let spendLists = "spendLists"
         static let menuBarProvider = "menuBarProvider"
         static let refresh = "refreshMinutes"
         static let limitAlert = "limitAlert"

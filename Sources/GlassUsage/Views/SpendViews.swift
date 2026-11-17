@@ -8,6 +8,8 @@ struct SpendSection: View {
     @Binding var breakdown: SpendBreakdown
     let style: SpendView
     let colors: SpendColors
+    /// The lists offered under the chart, in tab order; none hides the list.
+    let lists: [SpendBreakdown]
     let isLoading: Bool
 
     var body: some View {
@@ -30,8 +32,8 @@ struct SpendSection: View {
             } else {
                 let palette = SpendPalette(style: colors, providers: summary.providers)
                 switch style {
-                case .ledger: SpendLedger(summary: summary, range: range, breakdown: $breakdown, palette: palette)
-                case .calendar: SpendCalendar(summary: summary, range: range, breakdown: $breakdown, palette: palette)
+                case .ledger: SpendLedger(summary: summary, range: range, breakdown: $breakdown, lists: lists, palette: palette)
+                case .calendar: SpendCalendar(summary: summary, range: range, breakdown: $breakdown, lists: lists, palette: palette)
                 }
             }
         }
@@ -77,6 +79,7 @@ private struct SpendLedger: View {
     let summary: SpendSummary
     let range: SpendRange
     @Binding var breakdown: SpendBreakdown
+    let lists: [SpendBreakdown]
     let palette: SpendPalette
 
     @State private var hovered: Date?
@@ -157,7 +160,9 @@ private struct SpendLedger: View {
             .lineLimit(1)
             .padding(.top, 9)
 
-            BreakdownRows(summary: summary, breakdown: $breakdown, palette: palette).padding(.top, 8)
+            if !lists.isEmpty {
+                BreakdownRows(summary: summary, breakdown: $breakdown, lists: lists, palette: palette).padding(.top, 8)
+            }
         }
         .monospacedDigit()
     }
@@ -248,6 +253,7 @@ private struct SpendCalendar: View {
     let summary: SpendSummary
     let range: SpendRange
     @Binding var breakdown: SpendBreakdown
+    let lists: [SpendBreakdown]
     let palette: SpendPalette
 
     @State private var hovered: Date?
@@ -301,8 +307,8 @@ private struct SpendCalendar: View {
 
             readout.padding(.top, 2)
 
-            if !summary.models.isEmpty {
-                BreakdownRows(summary: summary, breakdown: $breakdown, palette: palette).padding(.top, 8)
+            if !summary.models.isEmpty, !lists.isEmpty {
+                BreakdownRows(summary: summary, breakdown: $breakdown, lists: lists, palette: palette).padding(.top, 8)
             }
             if summary.tokens.total > 0 {
                 chips.padding(.top, 7)
@@ -496,6 +502,8 @@ private struct SpendPalette {
 private struct BreakdownRows: View {
     let summary: SpendSummary
     @Binding var breakdown: SpendBreakdown
+    /// The lists turned on in Settings, in tab order; never empty.
+    let lists: [SpendBreakdown]
     let palette: SpendPalette
     @Environment(\.appSettings) private var settings
     @Environment(\.panelRevealed) private var revealed
@@ -506,10 +514,12 @@ private struct BreakdownRows: View {
     private static let neutral = Color.primary.opacity(0.4)
 
     var body: some View {
+        // The last pick may have been turned off since; then the first list still on.
+        let shown = lists.contains(breakdown) ? breakdown : lists[0]
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 14) {
-                ForEach(SpendBreakdown.allCases, id: \.self) { tab in
-                    let selected = tab == breakdown
+                ForEach(lists, id: \.self) { tab in
+                    let selected = tab == shown
                     Button { breakdown = tab } label: {
                         // Sized for the bold label, so the tabs don't shift as the selection moves.
                         Text(tab.label).fontWeight(.semibold).hidden()
@@ -524,7 +534,7 @@ private struct BreakdownRows: View {
             .font(.system(size: 12))
             .frame(height: 22)
             VStack(spacing: 0) {
-                switch breakdown {
+                switch shown {
                 case .models:
                     ForEach(Array(summary.models.prefix(5).enumerated()), id: \.element.id) { index, model in
                         row(model.id, model.displayName, tokens: model.tokens.total, cost: model.cost, help: model.model,

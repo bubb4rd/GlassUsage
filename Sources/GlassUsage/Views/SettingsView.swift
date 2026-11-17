@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A strip of choices (providers, menu bar, rings, percent, spend view, refresh) over one group of switches.
+/// A strip of choices (providers, menu bar, rings, percent, spend view, colors, lists, refresh, alerts) over one group of switches.
 /// Version, updates, privacy and Quit live in the header.
 struct SettingsView: View {
     let store: UsageStore
@@ -37,6 +37,9 @@ struct SettingsView: View {
                                symbols: Dictionary(uniqueKeysWithValues: SpendColors.allCases.map { ($0, $0.symbol) }))
                 }
                 .help("How the spend charts tell providers apart: gray steps, or each provider's color")
+                stripRow("Lists") {
+                    FlowLayout { ForEach(SpendBreakdown.allCases, id: \.self) { listChip($0) } }
+                }
                 stripRow("Refresh") {
                     PillPicker(options: AppSettings.refreshChoices.map { ($0, "\($0)") }, selection: Binding(
                         get: { settings.refreshMinutes },
@@ -184,6 +187,26 @@ struct SettingsView: View {
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
+    /// Offers or drops one of the lists under the spend chart; with all of them off the list goes.
+    private func listChip(_ list: SpendBreakdown) -> some View {
+        let settings = store.settings
+        let on = settings.spendLists.contains(list)
+        return Button {
+            if on { settings.spendLists.remove(list) } else { settings.spendLists.insert(list) }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: list.symbol).font(.system(size: 10)).opacity(on ? 1 : 0.6)
+                Text(list.label)
+            }
+            .padding(.horizontal, 9)
+            .chip(selected: on)
+        }
+        .buttonStyle(.plain)
+        .help(on ? "Hide the \(list.label.lowercased()) list under the spend chart" : "Show \(list.label.lowercased()) under the spend chart")
+        .accessibilityLabel("\(list.label) list")
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
     /// Each tracked provider drawn as the menu bar item it would produce, with the chosen rings and
     /// percentage; picking one puts it in the menu bar.
     @ViewBuilder
@@ -290,6 +313,16 @@ private extension View {
                 }
             }
             .contentShape(shape)
+    }
+}
+
+private extension SpendBreakdown {
+    var symbol: String {
+        switch self {
+        case .models: "cpu"
+        case .projects: "folder"
+        case .sources: "terminal"
+        }
     }
 }
 
