@@ -84,9 +84,9 @@ struct UsagePanelView: View {
                 if settings.showSpend {
                     SpendSection(summary: summary, range: $model.range, breakdown: $model.breakdown,
                                  style: settings.spendView, isLoading: store.localReports.isEmpty)
-                        // Space, not a rule, sets the spend block apart from the limits.
-                        .padding(.top, 24)
                         .environment(\.logosFromProtectedFolders, settings.logosFromProtectedFolders)
+                        // The same gap as between providers, so every block sits the same distance apart.
+                        .padding(.top, 9)
                         .reveal(after: Motion.step * Double(providers.count + 1))
                         .transition(.opacity)
                 }
@@ -130,7 +130,10 @@ private struct ProviderLimits: View {
                 HStack(spacing: 7) {
                     if showsTitle { ProviderTitle(provider: provider, state: state, now: now) }
                     if let snapshot, let group {
-                        GroupPicker(groups: snapshot.groups, selected: group) { pickedGroup = $0 }
+                        // Labels and rings fade over together, at the picker's own pace.
+                        GroupPicker(groups: snapshot.groups, selected: group) { picked in
+                            withAnimation(.easeOut(duration: 0.15)) { pickedGroup = picked }
+                        }
                     }
                 }
                 .padding(.bottom, showsTitle ? 6 : 8)
@@ -139,10 +142,10 @@ private struct ProviderLimits: View {
 
             if let snapshot {
                 // Rings spread so the first starts at the leading edge and the last ends at the trailing one; a group
-                // with a single window (Antigravity's Argon) starts at the leading edge too. Keyed by window length,
-                // so a ring animates to its new place when the group changes.
+                // with a single window (Antigravity's Argon) starts at the leading edge too. Keyed by group and window,
+                // so another group's rings fade in and sweep from empty rather than sliding over from this group's.
                 HStack(spacing: 0) {
-                    ForEach(Array(shownWindows(snapshot, group: group).enumerated()), id: \.element.key) { index, window in
+                    ForEach(Array(shownWindows(snapshot, group: group).enumerated()), id: \.element.id) { index, window in
                         if index > 0 { Spacer(minLength: 12) }
                         LimitRing(window: window, now: now, delay: 0.05 + 0.08 * Double(index))
                     }

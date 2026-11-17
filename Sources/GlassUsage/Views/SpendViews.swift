@@ -120,7 +120,8 @@ private struct SpendLedger: View {
                     .fixedSize()
                     .alignmentGuide(.top) { $0[.bottom] + 2 }
             }
-            .padding(.top, 16)
+            // Room for the peak label to clear the range picker above it.
+            .padding(.top, 26)
 
             axis(spacing: spacing)
                 .font(.system(size: 10))
