@@ -11,6 +11,9 @@ final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
     /// Version of a newer release found by the last check, so Settings can point at it.
     private(set) var availableVersion: String?
 
+    /// Runs before Sparkle opens a window. The panel floats above normal windows, so it has to get out of the way.
+    @ObservationIgnored var willShowWindow: () -> Void = {}
+
     var isAvailable: Bool { controller != nil }
 
     override init() {
@@ -27,6 +30,7 @@ final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
     }
 
     func checkForUpdates() {
+        willShowWindow()
         NSApp.activate()
         controller?.checkForUpdates(nil)
     }
@@ -37,6 +41,17 @@ final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
         availableVersion = nil
+    }
+
+    /// "Up to date", errors and other alerts during a check.
+    func standardUserDriverWillShowModalAlert() {
+        willShowWindow()
+    }
+
+    /// An update found by a scheduled check, about to be shown.
+    func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem,
+                                                   state: SPUUserUpdateState) {
+        if handleShowingUpdate { willShowWindow() }
     }
 
     /// A menu bar app has no window to come forward; let Sparkle show scheduled updates gently.

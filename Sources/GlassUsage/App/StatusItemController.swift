@@ -35,6 +35,7 @@ final class StatusItemController: NSObject {
                                   },
                                   onQuit: { NSApp.terminate(nil) })
         panel.setContent(root)
+        updater.willShowWindow = { [weak self] in self?.hidePanel() }
 
         if let button = statusItem.button {
             button.target = self
