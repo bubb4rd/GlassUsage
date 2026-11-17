@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// A strip of choices (providers, menu bar, rings, percent, spend view, colors, lists, refresh, alerts) over one group of switches.
-/// Version, updates, privacy and Quit live in the header.
+/// Settings grouped by what they change: which limits are tracked, the menu bar item, the spend block, and
+/// the app itself. Version, updates, privacy and Quit live in the header.
 struct SettingsView: View {
     let store: UsageStore
     let updater: Updater
@@ -17,83 +17,83 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             header.reveal(after: 0)
 
-            VStack(alignment: .leading, spacing: 8) {
-                stripRow("Track") {
+            VStack(alignment: .leading, spacing: 12) {
+                section("Limits") {
                     FlowLayout { ForEach(ProviderID.allCases) { trackChip($0) } }
-                }
-                stripRow("Menu bar") { FlowLayout { menuBarOptions } }
-                stripRow("Rings") {
-                    PillPicker(options: MenuBarRings.allCases.map { ($0, $0.label) }, selection: $settings.menuBarRings)
-                }
-                stripRow("Percent") {
-                    PillPicker(options: MenuBarPercent.allCases.map { ($0, $0.label) }, selection: $settings.menuBarPercent)
-                }
-                stripRow("Spend") {
-                    PillPicker(options: SpendView.allCases.map { ($0, $0.label) }, selection: $settings.spendView,
-                               symbols: Dictionary(uniqueKeysWithValues: SpendView.allCases.map { ($0, $0.symbol) }))
-                }
-                stripRow("Colors") {
-                    PillPicker(options: SpendColors.allCases.map { ($0, $0.label) }, selection: $settings.spendColors,
-                               symbols: Dictionary(uniqueKeysWithValues: SpendColors.allCases.map { ($0, $0.symbol) }))
-                }
-                .help("How the spend charts tell providers apart: gray steps, or each provider's color")
-                stripRow("Lists") {
-                    FlowLayout { ForEach(SpendBreakdown.allCases, id: \.self) { listChip($0) } }
-                }
-                stripRow("Refresh") {
-                    PillPicker(options: AppSettings.refreshChoices.map { ($0, "\($0)") }, selection: Binding(
-                        get: { settings.refreshMinutes },
-                        set: { settings.refreshMinutes = $0; store.start() }))
-                    Text("min").font(.system(size: 11.5)).foregroundStyle(.tertiary)
-                }
-                stripRow("Alerts") {
-                    PillPicker(options: LimitAlertLevel.allCases.map { ($0, $0.label) }, selection: Binding(
-                        get: { settings.limitAlert },
-                        set: { level in
-                            settings.limitAlert = level
-                            if level != .off { Task { await store.alerts.requestPermission() } }
-                        }))
-                    if settings.limitAlert != .off && store.alerts.isBlocked {
-                        Button { openNotificationSettings() } label: {
-                            Image(systemName: "bell.slash.fill")
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.warning)
-                                .frame(width: 22, height: 22)
-                                .contentShape(Rectangle())
+                        .padding(8)
+                    divider
+                    row("Limit alerts") { alertsControl }
+                        .help("Notify when a tracked limit reaches this level, and again when it resets")
+                        .task {
+                            if settings.limitAlert != .off { await store.alerts.refreshPermission() }
                         }
-                        .buttonStyle(.plain)
-                        .help("Notifications are off for GlassUsage. Click to allow them in System Settings.")
-                        .accessibilityLabel("Allow notifications in System Settings")
+                }
+                .reveal(after: Motion.step)
+
+                section("Menu bar") {
+                    FlowLayout { menuBarOptions }
+                        .padding(8)
+                    divider
+                    row("Rings") {
+                        PillPicker(options: MenuBarRings.allCases.map { ($0, $0.label) }, selection: $settings.menuBarRings)
+                    }
+                    divider
+                    row("Percentage") {
+                        menuPicker(MenuBarPercent.allCases.map { ($0, $0.label) }, selection: $settings.menuBarPercent,
+                                   help: "The percentage beside the menu bar glyph")
+                    }
+                    divider
+                    row("Open on hover") { Toggle("Open on hover", isOn: $settings.openOnHover).pointingHand() }
+                }
+                .reveal(after: Motion.step * 2)
+
+                section("Spend") {
+                    row("Chart") {
+                        PillPicker(options: SpendView.allCases.map { ($0, $0.label) }, selection: $settings.spendView) {
+                            Image(systemName: $0.symbol).font(.system(size: 9.5))
+                        }
+                    }
+                    divider
+                    row("Colors") {
+                        PillPicker(options: SpendColors.allCases.map { ($0, $0.label) }, selection: $settings.spendColors) {
+                            swatch($0)
+                        }
+                    }
+                    .help("How the spend charts tell providers apart: gray steps, or each provider's color")
+                    divider
+                    row("Lists") {
+                        HStack(spacing: 5) { ForEach(SpendBreakdown.allCases, id: \.self) { listChip($0) } }
+                    }
+                    divider
+                    row("Projects in Documents & Desktop") {
+                        Toggle("Projects in Documents & Desktop", isOn: $settings.readProtectedFolders)
+                            .pointingHand()
+                    }
+                    .help("Read project folders in Documents, Desktop, Downloads, iCloud Drive, cloud storage and external drives: for their logos, and to count a subfolder or worktree toward its repository. macOS asks for access first.")
+                }
+                .reveal(after: Motion.step * 3)
+
+                section("General") {
+                    row("Refresh every") {
+                        menuPicker(AppSettings.refreshChoices.map { ($0, "\($0) min") }, selection: Binding(
+                            get: { settings.refreshMinutes },
+                            set: { settings.refreshMinutes = $0; store.start() }),
+                                   help: "How often limits are fetched")
+                    }
+                    divider
+                    row("Launch at login") { Toggle("Launch at login", isOn: $settings.launchAtLogin).pointingHand() }
+                    if updater.isAvailable {
+                        divider
+                        row("Update automatically") {
+                            Toggle("Update automatically", isOn: $autoUpdates)
+                                .pointingHand()
+                                .onChange(of: autoUpdates) { _, value in updater.automaticallyChecks = value }
+                        }
                     }
                 }
-                .help("Notify when a tracked limit reaches this level, and again when it resets")
-                .task {
-                    if settings.limitAlert != .off { await store.alerts.refreshPermission() }
-                }
+                .reveal(after: Motion.step * 4)
             }
             .padding(.top, 10)
-            .reveal(after: Motion.step)
-
-            VStack(spacing: 0) {
-                row("Open on hover") { Toggle("Open on hover", isOn: $settings.openOnHover) }
-                divider
-                row("Launch at login") { Toggle("Launch at login", isOn: $settings.launchAtLogin) }
-                divider
-                row("Projects in Documents & Desktop") {
-                    Toggle("Projects in Documents & Desktop", isOn: $settings.readProtectedFolders)
-                }
-                .help("Read project folders in Documents, Desktop, Downloads, iCloud Drive, cloud storage and external drives: for their logos, and to count a subfolder or worktree toward its repository. macOS asks for access first.")
-                if updater.isAvailable {
-                    divider
-                    row("Update automatically") {
-                        Toggle("Update automatically", isOn: $autoUpdates)
-                            .onChange(of: autoUpdates) { _, value in updater.automaticallyChecks = value }
-                    }
-                }
-            }
-            .background(RoundedRectangle(cornerRadius: 10).fill(Theme.fill1))
-            .padding(.top, 12)
-            .reveal(after: Motion.step * 2)
         }
         .toggleStyle(.switch)
         .controlSize(.mini)
@@ -160,7 +160,76 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Strip
+    // MARK: Controls
+
+    /// The alert level, and a way to System Settings when macOS blocks the notifications.
+    @ViewBuilder
+    private var alertsControl: some View {
+        let settings = store.settings
+        HStack(spacing: 4) {
+            if settings.limitAlert != .off && store.alerts.isBlocked {
+                Button { openNotificationSettings() } label: {
+                    Image(systemName: "bell.slash.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.warning)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .pointingHand()
+                .help("Notifications are off for GlassUsage. Click to allow them in System Settings.")
+                .accessibilityLabel("Allow notifications in System Settings")
+            }
+            menuPicker(LimitAlertLevel.allCases.map { ($0, $0.label) }, selection: Binding(
+                get: { settings.limitAlert },
+                set: { level in
+                    settings.limitAlert = level
+                    if level != .off { Task { await store.alerts.requestPermission() } }
+                }), help: "Limit alerts")
+        }
+    }
+
+    /// A compact value that opens a menu of `options`: for settings set once and rarely revisited.
+    private func menuPicker<Value: Hashable>(_ options: [(value: Value, label: String)], selection: Binding<Value>,
+                                             help: String) -> some View {
+        Menu {
+            Picker(help, selection: selection) {
+                ForEach(options, id: \.value) { Text($0.label).tag($0.value) }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            HStack(spacing: 5) {
+                Text(options.first { $0.value == selection.wrappedValue }?.label ?? "")
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .font(.system(size: 11.5, weight: .medium))
+            .padding(.leading, 9)
+            .padding(.trailing, 7)
+            .frame(height: 24)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.fill2))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .pointingHand()
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(help)
+        .accessibilityLabel(help)
+    }
+
+    /// The spend chart's providers as a short stack in `colors`, so each option shows what it looks like.
+    private func swatch(_ colors: SpendColors) -> some View {
+        let palette = SpendPalette(style: colors, providers: ProviderID.allCases)
+        return HStack(spacing: colors == .graphite ? 1 : 0) {
+            ForEach(ProviderID.allCases) { Rectangle().fill(palette.color(for: $0)).frame(width: 3) }
+        }
+        .frame(height: 9)
+        .clipShape(RoundedRectangle(cornerRadius: 2))
+    }
+
+    // MARK: Chips
 
     /// Turns a provider's limits on or off; a tracked provider without a reading says why.
     private func trackChip(_ provider: ProviderID) -> some View {
@@ -245,18 +314,17 @@ struct SettingsView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    private func stripRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(alignment: .top, spacing: 6) {
+    /// A titled card of rows; areas of the app each get one.
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 11.5))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.tertiary)
-                .frame(width: 52, height: 26, alignment: .leading)
-            HStack(spacing: 6) { content() }
-                .frame(minHeight: 26)
+                .padding(.leading, 12)
+            VStack(spacing: 0) { content() }
+                .background(RoundedRectangle(cornerRadius: 10).fill(Theme.fill1))
         }
     }
-
-    // MARK: Switches
 
     private var divider: some View {
         Rectangle().fill(Theme.hair).frame(height: 0.5).padding(.leading, 12)

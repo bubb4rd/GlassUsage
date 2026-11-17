@@ -471,7 +471,7 @@ private enum SpendColumn {
 }
 
 /// Fills for the spend charts' provider stacks and legend, and the calendar's token-mix dots.
-private struct SpendPalette {
+struct SpendPalette {
     let style: SpendColors
     /// Providers in the chart, bottom of the stack first.
     let providers: [ProviderID]
@@ -527,6 +527,7 @@ private struct BreakdownRows: View {
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
+                    .pointingHand()
                     .foregroundStyle(selected ? .primary : .tertiary)
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }

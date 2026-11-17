@@ -119,11 +119,17 @@ struct IconButton: View {
 }
 
 /// TokenHell's compact segmented control: a tinted track with a raised selected pill.
-/// `symbols` adds an SF Symbol in front of an option's label.
-struct PillPicker<Value: Hashable>: View {
+/// `icon` draws something in front of an option's label: an SF Symbol, a swatch.
+struct PillPicker<Value: Hashable, Icon: View>: View {
     let options: [(value: Value, label: String)]
     @Binding var selection: Value
-    var symbols: [Value: String] = [:]
+    let icon: (Value) -> Icon
+
+    init(options: [(value: Value, label: String)], selection: Binding<Value>, @ViewBuilder icon: @escaping (Value) -> Icon) {
+        self.options = options
+        _selection = selection
+        self.icon = icon
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -131,9 +137,7 @@ struct PillPicker<Value: Hashable>: View {
                 let selected = option.value == selection
                 Button { selection = option.value } label: {
                     HStack(spacing: 4) {
-                        if let symbol = symbols[option.value] {
-                            Image(systemName: symbol).font(.system(size: 9.5))
-                        }
+                        icon(option.value)
                         Text(option.label)
                     }
                     .font(.system(size: 11.5, weight: selected ? .semibold : .regular))
@@ -157,6 +161,12 @@ struct PillPicker<Value: Hashable>: View {
         .padding(2)
         .background(RoundedRectangle(cornerRadius: 9).fill(Theme.fill1))
         .animation(.easeOut(duration: 0.15), value: selection)
+    }
+}
+
+extension PillPicker where Icon == EmptyView {
+    init(options: [(value: Value, label: String)], selection: Binding<Value>) {
+        self.init(options: options, selection: selection) { _ in EmptyView() }
     }
 }
 

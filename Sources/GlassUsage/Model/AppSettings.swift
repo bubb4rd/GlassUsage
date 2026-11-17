@@ -183,13 +183,6 @@ enum SpendColors: String, CaseIterable {
         case .providers: "Providers"
         }
     }
-
-    var symbol: String {
-        switch self {
-        case .graphite: "circle.lefthalf.filled"
-        case .providers: "paintpalette.fill"
-        }
-    }
 }
 
 /// The windows the menu bar glyph draws: session inside and the longest window (week, or month) outside,
@@ -214,10 +207,10 @@ enum MenuBarPercent: String, CaseIterable {
     var label: String {
         switch self {
         case .off: "Off"
-        case .highest: "Max"
+        case .highest: "Highest"
         case .session: "Session"
         case .weekly: "Weekly"
-        case .both: "Both"
+        case .both: "Session · Weekly"
         }
     }
 }
