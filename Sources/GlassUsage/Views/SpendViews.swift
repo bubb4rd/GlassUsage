@@ -436,6 +436,9 @@ private struct BreakdownRows: View {
     let summary: SpendSummary
     @Binding var breakdown: SpendBreakdown
     @Environment(\.appSettings) private var settings
+    @Environment(\.panelRevealed) private var revealed
+    /// The row whose name slides to show all of it.
+    @State private var hovered: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -453,14 +456,14 @@ private struct BreakdownRows: View {
                 switch breakdown {
                 case .models:
                     ForEach(Array(summary.models.prefix(5).enumerated()), id: \.element.id) { index, model in
-                        row(model.displayName, tokens: model.tokens.total, cost: model.cost, help: model.model) {
+                        row(model.id, model.displayName, tokens: model.tokens.total, cost: model.cost, help: model.model) {
                             ProviderLogo(provider: model.provider, size: 12)
                         }
                         .reveal(after: Self.rowDelay(index))
                     }
                 case .projects:
                     ForEach(Array(summary.projects.enumerated()), id: \.element.id) { index, project in
-                        row(project.name, tokens: project.tokens.total, cost: project.cost,
+                        row(project.id, project.name, tokens: project.tokens.total, cost: project.cost,
                             help: project.path.isEmpty ? "Smaller projects, temporary folders and sessions without a project folder" : project.path) {
                             ProjectIcon(project: project)
                         }
@@ -480,15 +483,13 @@ private struct BreakdownRows: View {
     /// Rows follow the chart above them, one after another.
     private static func rowDelay(_ index: Int) -> Double { 0.1 + 0.03 * Double(index) }
 
-    private func row<Icon: View>(_ name: String, tokens: Int, cost: Double, help: String,
+    private func row<Icon: View>(_ id: String, _ name: String, tokens: Int, cost: Double, help: String,
                                  @ViewBuilder icon: () -> Icon) -> some View {
         HStack(spacing: 8) {
             icon()
                 .frame(width: 14)
-            Text(name)
+            SlidingLabel(text: name, sliding: hovered == id && revealed)
                 .fontWeight(.medium)
-                .lineLimit(1)
-                .truncationMode(.middle)
             Spacer(minLength: 6)
             Text(Format.tokens(tokens))
                 .fontWeight(.semibold)
@@ -499,6 +500,10 @@ private struct BreakdownRows: View {
         }
         .font(.system(size: 12.5))
         .frame(height: 24)
+        .contentShape(.rect)
+        .onHover { inside in
+            if inside { hovered = id } else if hovered == id { hovered = nil }
+        }
         .help("\(help) · \(share(tokens, of: summary.tokens.total)) of tokens")
         .accessibilityElement(children: .combine)
     }
