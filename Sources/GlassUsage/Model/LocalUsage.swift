@@ -55,7 +55,8 @@ nonisolated struct ModelUsage: Hashable, Sendable {
     var unpricedTokens = 0
 }
 
-nonisolated struct ProjectUsage: Hashable, Sendable {
+/// Tokens and their API-equivalent cost, for one project or source.
+nonisolated struct TokenSpend: Hashable, Sendable {
     var tokens = TokenCounts()
     var cost: Double = 0
 }
@@ -64,7 +65,8 @@ nonisolated struct DayUsage: Identifiable, Hashable, Sendable {
     let day: Date
     var byModel: [String: ModelUsage] = [:]
     /// Keyed by project folder; "" collects usage from logs that don't record one.
-    var byProject: [String: ProjectUsage] = [:]
+    var byProject: [String: TokenSpend] = [:]
+    var bySource: [LocalSource: TokenSpend] = [:]
     var id: Date { day }
     var cost: Double { byModel.values.reduce(0) { $0 + $1.cost } }
     var tokens: Int { byModel.values.reduce(0) { $0 + $1.tokens.total } }
@@ -105,8 +107,10 @@ nonisolated struct LocalUsageReport: Sendable {
             if let cost { usage.cost += cost } else { usage.unpricedTokens += entry.tokens.total }
             days[day, default: DayUsage(day: day)].byModel[entry.model] = usage
             let project = entry.project.flatMap { ProjectNames.isTemporary($0) ? nil : $0 } ?? ""
-            days[day, default: DayUsage(day: day)].byProject[project, default: ProjectUsage()].tokens += entry.tokens
-            days[day, default: DayUsage(day: day)].byProject[project, default: ProjectUsage()].cost += cost ?? 0
+            days[day, default: DayUsage(day: day)].byProject[project, default: TokenSpend()].tokens += entry.tokens
+            days[day, default: DayUsage(day: day)].byProject[project, default: TokenSpend()].cost += cost ?? 0
+            days[day, default: DayUsage(day: day)].bySource[entry.source, default: TokenSpend()].tokens += entry.tokens
+            days[day, default: DayUsage(day: day)].bySource[entry.source, default: TokenSpend()].cost += cost ?? 0
         }
 
         let allDays = (0..<dayCount).map { offset -> DayUsage in
@@ -129,9 +133,9 @@ nonisolated enum SpendRange: String, CaseIterable, Identifiable, Sendable {
 
 /// What the list under the spend chart ranks.
 nonisolated enum SpendBreakdown: String, CaseIterable, Sendable {
-    case models, projects
+    case models, projects, sources
 
-    var label: String { switch self { case .models: "Models"; case .projects: "Projects" } }
+    var label: String { switch self { case .models: "Models"; case .projects: "Projects"; case .sources: "Sources" } }
 }
 
 nonisolated struct ModelSpend: Identifiable, Sendable {
@@ -153,14 +157,22 @@ nonisolated struct ProjectSpend: Identifiable, Sendable {
     var id: String { path }
 }
 
+nonisolated struct SourceSpend: Identifiable, Sendable {
+    let source: LocalSource
+    var tokens = TokenCounts()
+    var cost: Double = 0
+    var id: LocalSource { source }
+}
+
 nonisolated struct DaySpend: Identifiable, Sendable {
     let day: Date
     var tokensByProvider: [ProviderID: Int] = [:]
-    var cost: Double = 0
+    var costByProvider: [ProviderID: Double] = [:]
     /// Inside the selected range (the chart shows a week of context for "Today").
     let inRange: Bool
     var id: Date { day }
     var tokens: Int { tokensByProvider.values.reduce(0, +) }
+    var cost: Double { costByProvider.values.reduce(0, +) }
 }
 
 /// Everything the spend sections show for one range, combined across providers.
@@ -169,14 +181,15 @@ nonisolated struct SpendSummary: Sendable {
     var cost: Double = 0
     /// Oldest first; at least a week so "Today" still has context.
     var days: [DaySpend] = []
-    /// Highest token count first.
+    /// Highest cost first, then most tokens (unpriced models cost nothing).
     var models: [ModelSpend] = []
-    /// At most `projectRows`, highest token count first, adding up to the range: projects with at least
-    /// `minProjectShare` of its tokens, then Other for the rest.
+    /// At most `projectRows`, ranked like `models`, adding up to the range: projects with at least
+    /// `minProjectShare` of its cost (of its tokens when nothing is priced), then Other for the rest.
     var projects: [ProjectSpend] = []
+    /// Tools the range's usage was read from, ranked like `models`.
+    var sources: [SourceSpend] = []
     /// Providers with any usage in the chart, in fixed order.
     var providers: [ProviderID] = []
-    var sources: [LocalSource] = []
     var hasUnpriced = false
 
     static let projectRows = 5
@@ -188,11 +201,10 @@ nonisolated struct SpendSummary: Sendable {
         var byDay: [Date: DaySpend] = [:]
         var models: [String: ModelSpend] = [:]
         var projects: [String: ProjectSpend] = [:]
+        var sources: [LocalSource: SourceSpend] = [:]
         var providers = Set<ProviderID>()
-        var sources = Set<LocalSource>()
 
         for report in reports {
-            sources.formUnion(report.sources)
             hasUnpriced = hasUnpriced || report.hasUnpriced
             let chartDays = report.days.suffix(chartCount)
             for (index, day) in chartDays.enumerated() {
@@ -200,9 +212,9 @@ nonisolated struct SpendSummary: Sendable {
                 var spend = byDay[day.day] ?? DaySpend(day: day.day, inRange: inRange)
                 if day.tokens > 0 {
                     spend.tokensByProvider[report.provider, default: 0] += day.tokens
+                    spend.costByProvider[report.provider, default: 0] += day.cost
                     providers.insert(report.provider)
                 }
-                spend.cost += day.cost
                 byDay[day.day] = spend
                 guard inRange else { continue }
                 cost += day.cost
@@ -216,13 +228,22 @@ nonisolated struct SpendSummary: Sendable {
                     projects[path, default: ProjectSpend(path: path)].tokens += usage.tokens
                     projects[path, default: ProjectSpend(path: path)].cost += usage.cost
                 }
+                for (source, usage) in day.bySource {
+                    sources[source, default: SourceSpend(source: source)].tokens += usage.tokens
+                    sources[source, default: SourceSpend(source: source)].cost += usage.cost
+                }
             }
         }
         days = byDay.values.sorted { $0.day < $1.day }
-        self.models = models.values.sorted { $0.tokens.total > $1.tokens.total }
-        let ranked = projects.values.sorted { $0.tokens.total > $1.tokens.total }
-        let minTokens = Double(tokens.total) * Self.minProjectShare
-        let large = ranked.filter { !$0.path.isEmpty && Double($0.tokens.total) >= minTokens }
+        self.models = models.values.sorted { Self.ranks($0.cost, $0.tokens, above: $1.cost, $1.tokens) }
+        self.sources = sources.values.sorted { Self.ranks($0.cost, $0.tokens, above: $1.cost, $1.tokens) }
+        let ranked = projects.values.sorted { Self.ranks($0.cost, $0.tokens, above: $1.cost, $1.tokens) }
+        let priced = cost > 0
+        let total = tokens.total
+        let large = ranked.filter { project in
+            !project.path.isEmpty && (priced ? project.cost >= cost * Self.minProjectShare
+                                             : Double(project.tokens.total) >= Double(total) * Self.minProjectShare)
+        }
         let fitsAll = large.count == ranked.count && large.count <= Self.projectRows
         var shown = Array(large.prefix(fitsAll ? Self.projectRows : Self.projectRows - 1))
         if shown.count < ranked.count {
@@ -237,7 +258,11 @@ nonisolated struct SpendSummary: Sendable {
         let names = ProjectNames.display(shown.map(\.path))
         self.projects = shown.map { project in var project = project; project.name = names[project.path] ?? project.path; return project }
         self.providers = ProviderID.allCases.filter(providers.contains)
-        self.sources = LocalSource.allCases.filter(sources.contains)
+    }
+
+    /// Higher cost first; equal costs (unpriced models cost nothing) by tokens.
+    private static func ranks(_ cost: Double, _ tokens: TokenCounts, above otherCost: Double, _ otherTokens: TokenCounts) -> Bool {
+        cost != otherCost ? cost > otherCost : tokens.total > otherTokens.total
     }
 }
 

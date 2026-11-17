@@ -44,26 +44,26 @@ struct SpendSection: View {
         } else if !summary.hasChartUsage {
             Text("No usage \(range.inPhrase)").font(.system(size: 12.5)).foregroundStyle(.secondary)
         } else {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(Format.tokens(summary.tokens.total))
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Text(Format.dollars(summary.cost))
                     .font(.system(size: 22, weight: .bold))
                     .tracking(-0.5)
-                    .contentTransition(.numericText())
-                Text(Format.usd(summary.cost))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .underline(pattern: .dot, color: Color.primary.opacity(0.22))
-                    .contentTransition(.numericText())
-                    .help(costNote)
+                    .contentTransition(.numericText(value: summary.cost))
+                Text("API VALUE")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(.tertiary)
             }
             .monospacedDigit()
-            .animation(.smooth(duration: 0.3), value: summary.tokens.total)
+            .animation(.smooth(duration: 0.3), value: summary.cost)
+            .help(costNote)
+            .accessibilityElement(children: .combine)
         }
     }
 
     private var costNote: String {
-        var note = "Tokens priced at API list rates (LiteLLM). Subscriptions bill differently."
-        if !summary.sources.isEmpty { note += " From \(summary.sources.map(\.displayName).formatted())." }
+        var note = "\(Format.usd(summary.cost)): the tokens priced at API list rates (LiteLLM). Subscriptions bill differently."
+        if !summary.sources.isEmpty { note += " From \(summary.sources.map(\.source.displayName).formatted())." }
         if summary.hasUnpriced { note += " Some models have no list price and count as $0." }
         return note
     }
@@ -71,8 +71,8 @@ struct SpendSection: View {
 
 // MARK: Ledger
 
-/// One column per day stacked by provider, spanning the full width with the peak labelled above the
-/// top rule, and a date axis that turns into the hovered day's numbers.
+/// One column per day stacked by provider, scaled to the busiest day, with the daily average dashed across;
+/// a date axis that turns into the hovered day's numbers, and the range's token mix under it.
 private struct SpendLedger: View {
     let summary: SpendSummary
     let range: SpendRange
@@ -86,16 +86,35 @@ private struct SpendLedger: View {
     private static let chartHeight: CGFloat = 52
 
     var body: some View {
-        let peak = max(summary.days.map(\.tokens).max() ?? 0, 1)
+        // Dollars, like the headline; tokens only when no model in the chart has a price.
+        let byCost = summary.days.contains { $0.cost > 0 }
+        let value: (DaySpend) -> Double = byCost ? { $0.cost } : { Double($0.tokens) }
+        let peak = max(summary.days.map(value).max() ?? 0, .leastNonzeroMagnitude)
+        let average = summary.days.map(value).reduce(0, +) / Double(max(summary.days.count, 1))
         let spacing: CGFloat = summary.days.count > 14 ? 2 : 4
         // Columns grow from the baseline left to right, the whole sweep within a quarter second.
         let stagger = min(0.015, 0.25 / Double(max(summary.days.count, 1)))
         VStack(alignment: .leading, spacing: 0) {
+            let amount: (Double) -> String = byCost ? Format.dollars : { Format.tokens(Int($0)) }
+            let full = "avg \(amount(average))/day · peak \(amount(peak))"
+            // With many providers the key takes the room: then only the average, then only the key.
+            ViewThatFits(in: .horizontal) {
+                keyRow(averageLabel: full)
+                keyRow(averageLabel: "avg \(amount(average))")
+                keyRow(averageLabel: nil)
+            }
+            .help((summary.days.count > range.dayCount ? "Over the last \(summary.days.count) days: " : "Over the \(range.phrase): ") + full)
+            .font(.system(size: 10.5))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .frame(height: 14)
+            .padding(.top, 8)
+
             Revealing { grown in
                 HStack(alignment: .bottom, spacing: spacing) {
                     ForEach(Array(summary.days.enumerated()), id: \.element.id) { index, day in
-                        DayBar(day: day, providers: summary.providers, palette: palette,
-                               height: Self.chartHeight * Double(day.tokens) / Double(peak),
+                        DayBar(segments: day.segments(summary.providers, byCost: byCost), palette: palette,
+                               height: Self.chartHeight * value(day) / peak,
                                progress: grown || reduceMotion ? 1 : 0)
                             .animation(Motion.curve(grown, Motion.draw, delay: base + 0.05 + stagger * Double(index)), value: grown)
                             .frame(maxWidth: .infinity, maxHeight: Self.chartHeight, alignment: .bottom)
@@ -112,19 +131,12 @@ private struct SpendLedger: View {
             .frame(height: Self.chartHeight)
             .overlay(alignment: .top) {
                 HorizontalRule()
-                    .stroke(Color.primary.opacity(0.16), style: StrokeStyle(lineWidth: 0.5, dash: [2, 2]))
-                    .frame(height: 0.5)
+                    .stroke(Color.primary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                    .frame(height: 1)
+                    .offset(y: Self.chartHeight * (1 - average / peak) - 0.5)
+                    .allowsHitTesting(false)
             }
-            .overlay(alignment: .topTrailing) {
-                Text(Format.tokens(peak))
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .alignmentGuide(.top) { $0[.bottom] + 2 }
-            }
-            // Room for the peak label to clear the range picker above it.
-            .padding(.top, 26)
+            .padding(.top, 6)
 
             axis(spacing: spacing)
                 .font(.system(size: 10))
@@ -132,23 +144,38 @@ private struct SpendLedger: View {
                 .frame(height: 12)
                 .padding(.top, 5)
 
-            HStack(spacing: 10) {
+            Group {
                 if summary.tokens.total > 0 {
-                    Text("\(emphasis(Format.tokens(summary.tokens.output))) output · \(emphasis(share(summary.tokens.cacheRead, of: summary.tokens.total))) from cache")
+                    Text("\(emphasis(Format.tokens(summary.tokens.total))) tokens · \(emphasis(share(summary.tokens.cacheRead, of: summary.tokens.total))) cache reads · \(emphasis(Format.tokens(summary.tokens.output))) output")
                         .help(mixNote(summary.tokens))
                 } else {
                     Text("No usage \(range.inPhrase) yet")
                 }
-                Spacer(minLength: 0)
-                if summary.providers.count > 1 { ProviderLegend(palette: palette) }
             }
             .font(.system(size: 11.5))
             .foregroundStyle(.secondary)
-            .padding(.top, 10)
+            .lineLimit(1)
+            .padding(.top, 9)
 
-            BreakdownRows(summary: summary, breakdown: $breakdown).padding(.top, 8)
+            BreakdownRows(summary: summary, breakdown: $breakdown, palette: palette).padding(.top, 8)
         }
         .monospacedDigit()
+    }
+
+    /// The provider key on the left, the dashed average's label on the right.
+    private func keyRow(averageLabel: String?) -> some View {
+        HStack(spacing: 10) {
+            if summary.providers.count > 1 { ProviderLegend(palette: palette) }
+            Spacer(minLength: 0)
+            if let averageLabel {
+                HStack(spacing: 5) {
+                    HorizontalRule()
+                        .stroke(Color.primary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                        .frame(width: 12, height: 1)
+                    Text(averageLabel).fixedSize()
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -179,15 +206,14 @@ private struct SpendLedger: View {
 
 /// A day's column, stacked by provider; empty days keep a baseline stub so the timeline stays readable.
 private struct DayBar: View {
-    let day: DaySpend
-    let providers: [ProviderID]
+    /// Provider slices, top of the stack first, with their share of the column.
+    let segments: [(provider: ProviderID, share: Double)]
     let palette: SpendPalette
     let height: CGFloat
     /// 0 folds the column to its baseline, 1 draws it at full height.
     let progress: CGFloat
 
     var body: some View {
-        let segments = day.segments(providers)
         if height < 1 || segments.isEmpty {
             Capsule().fill(Theme.track).frame(height: 2).opacity(progress)
         } else {
@@ -197,7 +223,7 @@ private struct DayBar: View {
                 ForEach(segments, id: \.provider) { segment in
                     Rectangle()
                         .fill(palette.color(for: segment.provider))
-                        .frame(height: inner * Double(segment.tokens) / Double(day.tokens) * progress)
+                        .frame(height: inner * segment.share * progress)
                 }
             }
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 4, topTrailingRadius: 4))
@@ -276,7 +302,7 @@ private struct SpendCalendar: View {
             readout.padding(.top, 2)
 
             if !summary.models.isEmpty {
-                BreakdownRows(summary: summary, breakdown: $breakdown).padding(.top, 8)
+                BreakdownRows(summary: summary, breakdown: $breakdown, palette: palette).padding(.top, 8)
             }
             if summary.tokens.total > 0 {
                 chips.padding(.top, 7)
@@ -341,7 +367,7 @@ private struct SpendCalendar: View {
                     Rectangle()
                         .fill(day.inRange ? palette.color(for: segment.provider) : Color.primary)
                         .opacity(day.inRange ? intensity : intensity * 0.45)
-                        .frame(height: inner * Double(segment.tokens) / Double(day.tokens))
+                        .frame(height: inner * segment.share)
                 }
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
@@ -465,33 +491,44 @@ private struct SpendPalette {
     var slit: CGFloat { style == .graphite ? 1 : 0 }
 }
 
-/// Top models or projects for the range, stepped through with the arrows above them: tokens and cost.
-/// Share of tokens is in the tooltip.
+/// Top models, projects or sources for the range, by cost, each with its share of the range and a bar
+/// that long under it. Tokens are in the tooltip.
 private struct BreakdownRows: View {
     let summary: SpendSummary
     @Binding var breakdown: SpendBreakdown
+    let palette: SpendPalette
     @Environment(\.appSettings) private var settings
     @Environment(\.panelRevealed) private var revealed
     /// The row whose name slides to show all of it.
     @State private var hovered: String?
 
+    /// Bars for rows that belong to no single provider.
+    private static let neutral = Color.primary.opacity(0.4)
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text("TOP")
-                    .font(.system(size: 9.5, weight: .semibold))
-                    .tracking(0.6)
-                    .foregroundStyle(.tertiary)
-                Spacer()
-                CycleArrows(options: SpendBreakdown.allCases.map { ($0, $0.label) }, selection: breakdown,
-                            noun: "list") { breakdown = $0 }
+            HStack(spacing: 14) {
+                ForEach(SpendBreakdown.allCases, id: \.self) { tab in
+                    let selected = tab == breakdown
+                    Button { breakdown = tab } label: {
+                        // Sized for the bold label, so the tabs don't shift as the selection moves.
+                        Text(tab.label).fontWeight(.semibold).hidden()
+                            .overlay(alignment: .leading) { Text(tab.label).fontWeight(selected ? .semibold : .regular) }
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(selected ? .primary : .tertiary)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
             }
+            .font(.system(size: 12))
             .frame(height: 22)
             VStack(spacing: 0) {
                 switch breakdown {
                 case .models:
                     ForEach(Array(summary.models.prefix(5).enumerated()), id: \.element.id) { index, model in
-                        row(model.id, model.displayName, tokens: model.tokens.total, cost: model.cost, help: model.model) {
+                        row(model.id, model.displayName, tokens: model.tokens.total, cost: model.cost, help: model.model,
+                            bar: palette.color(for: model.provider)) {
                             ProviderLogo(provider: model.provider, size: 12)
                         }
                         .reveal(after: Self.rowDelay(index))
@@ -499,7 +536,8 @@ private struct BreakdownRows: View {
                 case .projects:
                     ForEach(Array(summary.projects.enumerated()), id: \.element.id) { index, project in
                         row(project.id, project.name, tokens: project.tokens.total, cost: project.cost,
-                            help: project.path.isEmpty ? "Smaller projects, temporary folders and sessions without a project folder" : project.path) {
+                            help: project.path.isEmpty ? "Smaller projects, temporary folders and sessions without a project folder" : project.path,
+                            bar: Self.neutral) {
                             ProjectIcon(project: project)
                         }
                         .reveal(after: Self.rowDelay(index))
@@ -508,6 +546,19 @@ private struct BreakdownRows: View {
                        summary.projects.contains(where: { ProjectIcons.isProtected($0.path) }) {
                         LogoHint(settings: settings)
                             .reveal(after: Self.rowDelay(summary.projects.count))
+                    }
+                case .sources:
+                    ForEach(Array(summary.sources.enumerated()), id: \.element.id) { index, source in
+                        let provider = source.source.provider
+                        row(source.source.rawValue, source.source.displayName, tokens: source.tokens.total, cost: source.cost,
+                            help: source.source.displayName, bar: provider.map(palette.color) ?? Self.neutral) {
+                            if let provider {
+                                ProviderLogo(provider: provider, size: 12)
+                            } else {
+                                Image(systemName: "terminal").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                            }
+                        }
+                        .reveal(after: Self.rowDelay(index))
                     }
                 }
             }
@@ -518,29 +569,56 @@ private struct BreakdownRows: View {
     /// Rows follow the chart above them, one after another.
     private static func rowDelay(_ index: Int) -> Double { 0.1 + 0.03 * Double(index) }
 
-    private func row<Icon: View>(_ id: String, _ name: String, tokens: Int, cost: Double, help: String,
+    /// Share of the range's cost, or of its tokens when nothing in it is priced.
+    private func fraction(tokens: Int, cost: Double) -> Double {
+        summary.cost > 0 ? cost / summary.cost : Double(tokens) / Double(max(summary.tokens.total, 1))
+    }
+
+    private func row<Icon: View>(_ id: String, _ name: String, tokens: Int, cost: Double, help: String, bar: Color,
                                  @ViewBuilder icon: () -> Icon) -> some View {
-        HStack(spacing: 8) {
-            icon()
-                .frame(width: 14)
-            SlidingLabel(text: name, sliding: hovered == id && revealed)
-                .fontWeight(.medium)
-            Spacer(minLength: 6)
-            Text(Format.tokens(tokens))
-                .fontWeight(.semibold)
-                .frame(width: SpendColumn.tokens, alignment: .trailing)
-            Text(Format.usd(cost))
-                .foregroundStyle(.secondary)
-                .frame(width: SpendColumn.cost, alignment: .trailing)
+        let fraction = fraction(tokens: tokens, cost: cost)
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                icon()
+                    .frame(width: 14)
+                SlidingLabel(text: name, sliding: hovered == id && revealed)
+                    .fontWeight(.medium)
+                Spacer(minLength: 6)
+                Text(fraction > 0 && fraction < 0.01 ? "<1%" : Format.percent(fraction * 100))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.tertiary)
+                Text(Format.usd(cost))
+                    .fontWeight(.semibold)
+                    .frame(width: SpendColumn.cost, alignment: .trailing)
+            }
+            .frame(height: 21)
+            RoundedRectangle(cornerRadius: 1)
+                .fill(bar)
+                .frame(height: 2)
+                .scaleEffect(x: min(max(fraction, 0), 1), anchor: .leading)
+                .animation(.smooth(duration: 0.3), value: fraction)
         }
         .font(.system(size: 12.5))
-        .frame(height: 24)
+        .frame(height: 26, alignment: .top)
         .contentShape(.rect)
         .onHover { inside in
             if inside { hovered = id } else if hovered == id { hovered = nil }
         }
-        .help("\(help) · \(share(tokens, of: summary.tokens.total)) of tokens")
+        .help("\(help) · \(Format.tokens(tokens)) tokens")
         .accessibilityElement(children: .combine)
+    }
+}
+
+private extension LocalSource {
+    /// The provider whose models the tool runs; nil for omp, which runs any.
+    var provider: ProviderID? {
+        switch self {
+        case .claudeCode: .claude
+        case .codexCLI: .codex
+        case .antigravity: .antigravity
+        case .museCode: .muse
+        case .omp: nil
+        }
     }
 }
 
@@ -583,18 +661,20 @@ private struct LogoHint: View {
     }
 }
 
+/// Which fill is which provider: a small swatch before each name, kept on one line.
 private struct ProviderLegend: View {
     let palette: SpendPalette
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             ForEach(palette.providers) { provider in
-                HStack(spacing: 5) {
-                    Dot(color: palette.color(for: provider), size: 7)
+                HStack(spacing: 4) {
+                    RoundedRectangle(cornerRadius: 2).fill(palette.color(for: provider)).frame(width: 7, height: 7)
                     Text(provider.displayName)
                 }
             }
         }
+        .fixedSize()
     }
 }
 
@@ -632,11 +712,14 @@ private extension DaySpend {
 
     var readout: String { "\(dayLabel) · \(Format.tokens(tokens)) tokens · \(Format.usd(cost))" }
 
-    /// Provider slices with tokens, top of the stack first (providers are in fixed order, bottom first).
-    func segments(_ providers: [ProviderID]) -> [(provider: ProviderID, tokens: Int)] {
-        providers.reversed().compactMap { provider in
-            guard let tokens = tokensByProvider[provider], tokens > 0 else { return nil }
-            return (provider, tokens)
+    /// Provider slices with their share of the day's tokens or cost, top of the stack first (providers are in
+    /// fixed order, bottom first).
+    func segments(_ providers: [ProviderID], byCost: Bool = false) -> [(provider: ProviderID, share: Double)] {
+        let total = byCost ? cost : Double(tokens)
+        guard total > 0 else { return [] }
+        return providers.reversed().compactMap { provider in
+            let value = byCost ? costByProvider[provider] ?? 0 : Double(tokensByProvider[provider] ?? 0)
+            return value > 0 ? (provider, value / total) : nil
         }
     }
 }

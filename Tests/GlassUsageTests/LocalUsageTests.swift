@@ -113,6 +113,31 @@ import Testing
         #expect(projects.map(\.tokens.total) == [500, 400, 50, 100])
     }
 
+    @Test func listsRankByCostWithSourcesSplitOut() {
+        let now = Date.now
+        func entry(_ key: String, _ provider: ProviderID, _ source: LocalSource, _ model: String, _ project: String, _ tokens: Int) -> UsageEntry {
+            UsageEntry(key: key, at: now, provider: provider, source: source, model: model,
+                       tokens: TokenCounts(input: tokens, output: 0, cacheRead: 0, cacheWrite: 0),
+                       cacheWrite1h: 0, recordedCost: nil, project: project)
+        }
+        // The cheap model burns the most tokens; Opus ($4/M input) costs more: $2 and $0.80 against $0.50.
+        let entries = [
+            entry("a", .codex, .codexCLI, "gpt-5.1-codex-mini", "/w/cheap", 2_000_000),
+            entry("b", .claude, .claudeCode, "claude-opus-5-5", "/w/dear", 500_000),
+            entry("c", .claude, .omp, "claude-opus-5-5", "/w/dear", 200_000),
+        ]
+        let reports = [ProviderID.claude, .codex].map {
+            LocalUsageReport.build(provider: $0, entries: entries, pricing: .builtIn, days: 30, now: now)
+        }
+        let summary = SpendSummary(reports: reports, range: .today)
+
+        #expect(summary.models.map(\.model) == ["claude-opus-5-5", "gpt-5.1-codex-mini"])
+        #expect(summary.projects.map(\.name) == ["dear", "cheap"])
+        #expect(summary.sources.map(\.source) == [.claudeCode, .omp, .codexCLI])
+        #expect(summary.sources.map(\.tokens.total) == [500_000, 200_000, 2_000_000])
+        #expect(abs(summary.sources.reduce(0) { $0 + $1.cost } - summary.cost) < 1e-9, "sources add up to the range")
+    }
+
     @Test func codexForkSkipsReplayedHistory() throws {
         var state = LogParsers.CodexState()
         _ = LogParsers.codex(try json("""

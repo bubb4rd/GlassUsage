@@ -22,6 +22,11 @@ enum Format {
         value.formatted(.currency(code: "USD").precision(.fractionLength(2)))
     }
 
+    /// Whole dollars from $10, where cents are noise: "$1,635", "$54", "$3.12".
+    static func dollars(_ value: Double) -> String {
+        value.formatted(.currency(code: "USD").precision(.fractionLength(value >= 10 ? 0 : 2)))
+    }
+
     /// Time left: "12m", "2h 14m", "3d 4h", "now".
     static func until(_ date: Date, now: Date) -> String {
         var seconds = Int(date.timeIntervalSince(now).rounded())
