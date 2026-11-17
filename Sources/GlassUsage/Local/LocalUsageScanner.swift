@@ -54,7 +54,7 @@ actor LocalUsageScanner {
                 if let previous, previous.size == file.size, previous.modified == file.modified { continue }
                 // Grown files continue from the last parsed line; shrunk ones start over.
                 let resume = previous.flatMap { $0.size < file.size ? $0 : nil }
-                files[file.path] = Self.parse(file, source: source, resume: resume)
+                files[file.path] = Self.parse(file, source: source, resume: resume, since: cutoff)
                 changed.append(file.path)
             }
         }
@@ -82,7 +82,7 @@ actor LocalUsageScanner {
     private struct LogFile {
         let url: URL
         let size: Int
-        /// Set for SQLite databases only.
+        /// Set for logs read whole: databases, and JSON files rewritten in place, which can keep their size.
         var modified: Date?
         var path: String { url.path }
     }
@@ -100,42 +100,64 @@ actor LocalUsageScanner {
             (.antigravity, AntigravityLogs.conversationDirectories()),
             (.museCode, [MuseProvider.sessionsDirectory]),
             (.omp, [home.appending(path: ".omp/agent/sessions")]),
+            (.cline, ClineLogs.directories(for: .cline)),
+            (.rooCode, ClineLogs.directories(for: .rooCode)),
+            (.kiloCode, ClineLogs.directories(for: .kiloCode)),
         ]
+    }
+
+    private static func isLog(_ url: URL, source: LocalSource) -> Bool {
+        switch source {
+        case .claudeCode, .omp: url.pathExtension == "jsonl"
+        case .codexCLI: url.pathExtension == "jsonl" && url.lastPathComponent.hasPrefix("rollout-")
+        case .museCode: url.lastPathComponent == "session.jsonl"
+        case .antigravity: url.pathExtension == "db"
+        case .cline, .rooCode, .kiloCode: ClineLogs.isLog(url)
+        }
     }
 
     private static func logFiles(in roots: [URL], source: LocalSource, modifiedAfter cutoff: Date) -> [LogFile] {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
         var files: [LogFile] = []
-        let isDatabase = source == .antigravity
+        func add(_ url: URL) {
+            guard isLog(url, source: source), let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true,
+                  var mtime = values.contentModificationDate, var size = values.fileSize else { return }
+            if url.pathExtension == "db" {
+                // Recent writes sit in the WAL until SQLite checkpoints them into the database.
+                let wal = URL(fileURLWithPath: url.path + "-wal")
+                if let walValues = try? wal.resourceValues(forKeys: Set(keys)), let walSize = walValues.fileSize {
+                    size += walSize
+                    mtime = max(mtime, walValues.contentModificationDate ?? mtime)
+                }
+            }
+            guard mtime >= cutoff else { return }
+            files.append(LogFile(url: url, size: size, modified: url.pathExtension == "jsonl" ? nil : mtime))
+        }
         for root in roots {
+            // A root can be one database (Kilo Code's) rather than a folder of logs.
+            if (try? root.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true {
+                add(root)
+                continue
+            }
             guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys,
                                                                   options: [.skipsHiddenFiles]) else { continue }
-            for case let url as URL in enumerator where url.pathExtension == (isDatabase ? "db" : "jsonl") {
-                if source == .codexCLI && !url.lastPathComponent.hasPrefix("rollout-") { continue }
-                if source == .museCode && url.lastPathComponent != "session.jsonl" { continue }
-                guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true,
-                      var mtime = values.contentModificationDate, var size = values.fileSize else { continue }
-                if isDatabase {
-                    // Recent writes sit in the WAL until SQLite checkpoints them into the database.
-                    let wal = URL(fileURLWithPath: url.path + "-wal")
-                    if let walValues = try? wal.resourceValues(forKeys: Set(keys)), let walSize = walValues.fileSize {
-                        size += walSize
-                        mtime = max(mtime, walValues.contentModificationDate ?? mtime)
-                    }
-                }
-                guard mtime >= cutoff else { continue }
-                files.append(LogFile(url: url, size: size, modified: isDatabase ? mtime : nil))
-            }
+            for case let url as URL in enumerator { add(url) }
         }
         return files
     }
 
     // MARK: Parsing
 
-    private static func parse(_ file: LogFile, source: LocalSource, resume: FileState?) -> FileState {
-        if source == .antigravity {
-            // A database, not an append-only log: reread it whole whenever it changes.
+    private static func parse(_ file: LogFile, source: LocalSource, resume: FileState?, since cutoff: Date) -> FileState {
+        // Databases and JSON files rewritten in place, not append-only logs: reread whole whenever they change.
+        switch source {
+        case .antigravity:
             return FileState(size: file.size, modified: file.modified, entries: AntigravityLogs.entries(in: file.url))
+        case .cline, .rooCode, .kiloCode:
+            return FileState(size: file.size, modified: file.modified,
+                             entries: ClineLogs.entries(in: file.url, source: source, since: cutoff))
+        case .claudeCode, .codexCLI, .museCode, .omp:
+            break
         }
         var state = resume ?? FileState(size: 0, codex: nil, entries: [])
         guard let data = try? Data(contentsOf: file.url, options: .alwaysMapped) else { return state }
@@ -154,7 +176,7 @@ actor LocalUsageScanner {
             case .omp: LogParsers.omp(json, project: &project)
             case .codexCLI: LogParsers.codex(json, state: &codex, fileStem: stem)
             case .museCode: LogParsers.muse(json, sessionID: sessionDir, project: &project)
-            case .antigravity: nil
+            case .antigravity, .cline, .rooCode, .kiloCode: nil
             }
             if let entry { state.entries.append(entry) }
         }

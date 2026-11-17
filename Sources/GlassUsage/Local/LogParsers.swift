@@ -10,7 +10,7 @@ nonisolated enum LogParsers {
         case .omp: [Array(#""usage""#.utf8), Array(#""type":"session""#.utf8)]
         case .codexCLI: [Array("token_count".utf8), Array("turn_context".utf8), Array("session_meta".utf8)]
         case .museCode: [Array("model_completed".utf8), Array("runtime.session.metadata".utf8)]
-        case .antigravity: []  // SQLite, read by AntigravityLogs
+        case .antigravity, .cline, .rooCode, .kiloCode: []  // read whole: AntigravityLogs, ClineLogs
         }
     }
 
@@ -62,13 +62,16 @@ nonisolated enum LogParsers {
                           cacheWrite1h: usage["cttl"]["ephemeral1h"].int, recordedCost: recorded, project: project)
     }
 
-    private static func provider(vendor: String?, model: String) -> ProviderID? {
+    /// The plan a call counts toward: by vendor when it names one, else by model family, also behind
+    /// a router prefix ("anthropic/claude-sonnet-4", Bedrock's "us.anthropic.claude-…"). Nil for other vendors.
+    static func provider(vendor: String?, model: String) -> ProviderID? {
         switch vendor {
         case "anthropic": return .claude
         case "openai-codex", "openai": return .codex
         default:
-            let id = model.lowercased()
-            if id.hasPrefix("claude") { return .claude }
+            var id = model.lowercased()
+            if let slash = id.lastIndex(of: "/") { id = String(id[id.index(after: slash)...]) }
+            if id.contains("claude") { return .claude }
             if id.hasPrefix("gpt-") || id.contains("codex") { return .codex }
             return nil
         }

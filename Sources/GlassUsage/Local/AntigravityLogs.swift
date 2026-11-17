@@ -51,40 +51,30 @@ nonisolated enum AntigravityLogs {
     }
 
     static func entries(in url: URL) -> [UsageEntry] {
-        var db: OpaquePointer?
-        // With a write-ahead log, open read-only so its recent calls are read too. Without one (the writer
-        // closed cleanly), read-only would need to create `-shm`, so open immutable: nothing is pending.
-        let hasLog = FileManager.default.fileExists(atPath: url.path + "-wal")
-        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: hasLog ? "mode" : "immutable", value: hasLog ? "ro" : "1")]
-        guard sqlite3_open_v2(components.string, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else {
-            sqlite3_close(db)
-            return []
-        }
+        guard let db = SQLiteRead.open(url) else { return [] }
         defer { sqlite3_close(db) }
-        sqlite3_busy_timeout(db, 1000)
 
         var tables = Set<String>()
-        query(db, "SELECT name FROM sqlite_master WHERE type = 'table'") { row in
-            if let name = sqlite3_column_text(row, 0) { tables.insert(String(cString: name)) }
+        SQLiteRead.query(db, "SELECT name FROM sqlite_master WHERE type = 'table'") { row in
+            if let name = SQLiteRead.text(row, 0) { tables.insert(name) }
         }
         var generations: [(idx: Int64, metadata: Metadata)] = []
         if tables.contains("gen_metadata") {
-            query(db, "SELECT idx, data FROM gen_metadata ORDER BY idx") { row in
-                if let metadata = generation(blob(row, 1)) { generations.append((sqlite3_column_int64(row, 0), metadata)) }
+            SQLiteRead.query(db, "SELECT idx, data FROM gen_metadata ORDER BY idx") { row in
+                if let metadata = generation(SQLiteRead.blob(row, 1)) { generations.append((sqlite3_column_int64(row, 0), metadata)) }
             }
         }
         var steps: [(idx: Int64, metadata: Metadata)] = []
         if tables.contains("steps") {
-            query(db, "SELECT idx, metadata FROM steps WHERE metadata IS NOT NULL ORDER BY idx") { row in
-                if let metadata = step(blob(row, 1)) { steps.append((sqlite3_column_int64(row, 0), metadata)) }
+            SQLiteRead.query(db, "SELECT idx, metadata FROM steps WHERE metadata IS NOT NULL ORDER BY idx") { row in
+                if let metadata = step(SQLiteRead.blob(row, 1)) { steps.append((sqlite3_column_int64(row, 0), metadata)) }
             }
         }
         var conversationTime: Date?
         var project: String?
         if tables.contains("trajectory_metadata_blob") {
-            query(db, "SELECT data FROM trajectory_metadata_blob") { row in
-                let metadata = ProtoMessage(blob(row, 0))
+            SQLiteRead.query(db, "SELECT data FROM trajectory_metadata_blob") { row in
+                let metadata = ProtoMessage(SQLiteRead.blob(row, 0))
                 conversationTime = conversationTime ?? metadata.message(2).flatMap(timestamp)
                 project = project ?? workspace(metadata)
             }
@@ -200,21 +190,6 @@ nonisolated enum AntigravityLogs {
     private static func timestamp(_ stamp: ProtoMessage) -> Date? {
         guard let seconds = stamp.varint(1), seconds > 0 else { return nil }
         return Date(timeIntervalSince1970: Double(seconds) + Double(stamp.varint(2) ?? 0) / 1e9)
-    }
-
-    // MARK: SQLite
-
-    private static func query(_ db: OpaquePointer?, _ sql: String, row: (OpaquePointer) -> Void) {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return }
-        defer { sqlite3_finalize(statement) }
-        while sqlite3_step(statement) == SQLITE_ROW { row(statement) }
-    }
-
-    private static func blob(_ row: OpaquePointer, _ column: Int32) -> ArraySlice<UInt8> {
-        let count = Int(sqlite3_column_bytes(row, column))
-        guard count > 0, let bytes = sqlite3_column_blob(row, column) else { return [] }
-        return ArraySlice(UnsafeRawBufferPointer(start: bytes, count: count))
     }
 }
 
