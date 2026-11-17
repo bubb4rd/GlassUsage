@@ -186,15 +186,11 @@ private struct ProviderTitle: View {
     var body: some View {
         HStack(spacing: 7) {
             ProviderLogo(provider: provider, size: 14)
-            Text(provider.displayName).font(.system(size: 12.5, weight: .semibold))
+            Text(provider.displayName).font(.system(size: 12.5, weight: .semibold)).fixedSize()
             if let plan = state.snapshot?.plan {
-                Text(plan.uppercased())
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(0.3)
+                Text(plan)
+                    .font(.system(size: 12.5))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(Theme.fill2))
                     .fixedSize()
             }
         }
