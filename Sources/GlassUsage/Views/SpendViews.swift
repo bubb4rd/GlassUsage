@@ -77,25 +77,33 @@ private struct SpendLedger: View {
     @Binding var breakdown: SpendBreakdown
 
     @State private var hovered: Date?
+    @Environment(\.revealDelay) private var base
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let chartHeight: CGFloat = 52
 
     var body: some View {
         let peak = max(summary.days.map(\.tokens).max() ?? 0, 1)
         let spacing: CGFloat = summary.days.count > 14 ? 2 : 4
+        // Columns grow from the baseline left to right, the whole sweep within a quarter second.
+        let stagger = min(0.015, 0.25 / Double(max(summary.days.count, 1)))
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .bottom, spacing: spacing) {
-                ForEach(summary.days) { day in
-                    DayBar(day: day, providers: summary.providers,
-                           height: Self.chartHeight * Double(day.tokens) / Double(peak))
-                        .frame(maxWidth: .infinity, maxHeight: Self.chartHeight, alignment: .bottom)
-                        .opacity(day.inRange ? 1 : 0.55)
-                        .contentShape(Rectangle())
-                        .onHover { inside in
-                            if inside { hovered = day.id } else if hovered == day.id { hovered = nil }
-                        }
-                        .accessibilityElement()
-                        .accessibilityLabel(day.readout)
+            Revealing { grown in
+                HStack(alignment: .bottom, spacing: spacing) {
+                    ForEach(Array(summary.days.enumerated()), id: \.element.id) { index, day in
+                        DayBar(day: day, providers: summary.providers,
+                               height: Self.chartHeight * Double(day.tokens) / Double(peak),
+                               progress: grown || reduceMotion ? 1 : 0)
+                            .animation(Motion.curve(grown, Motion.draw, delay: base + 0.05 + stagger * Double(index)), value: grown)
+                            .frame(maxWidth: .infinity, maxHeight: Self.chartHeight, alignment: .bottom)
+                            .opacity(day.inRange ? 1 : 0.55)
+                            .contentShape(Rectangle())
+                            .onHover { inside in
+                                if inside { hovered = day.id } else if hovered == day.id { hovered = nil }
+                            }
+                            .accessibilityElement()
+                            .accessibilityLabel(day.readout)
+                    }
                 }
             }
             .frame(height: Self.chartHeight)
@@ -170,11 +178,13 @@ private struct DayBar: View {
     let day: DaySpend
     let providers: [ProviderID]
     let height: CGFloat
+    /// 0 folds the column to its baseline, 1 draws it at full height.
+    let progress: CGFloat
 
     var body: some View {
         let segments = day.segments(providers)
         if height < 1 || segments.isEmpty {
-            Capsule().fill(Theme.track).frame(height: 2)
+            Capsule().fill(Theme.track).frame(height: 2).opacity(progress)
         } else {
             let slit: CGFloat = segments.count > 1 && height >= CGFloat(segments.count) * 4 ? 1 : 0
             let inner = height - slit * CGFloat(segments.count - 1)
@@ -182,7 +192,7 @@ private struct DayBar: View {
                 ForEach(segments, id: \.provider) { segment in
                     Rectangle()
                         .fill(Theme.color(for: segment.provider))
-                        .frame(height: inner * Double(segment.tokens) / Double(day.tokens))
+                        .frame(height: inner * Double(segment.tokens) / Double(day.tokens) * progress)
                 }
             }
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 4, topTrailingRadius: 4))
@@ -209,6 +219,8 @@ private struct SpendCalendar: View {
     @Binding var breakdown: SpendBreakdown
 
     @State private var hovered: Date?
+    @Environment(\.revealDelay) private var base
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let labelWidth: CGFloat = 40
     private static let cellWidth: CGFloat = 19
@@ -235,6 +247,10 @@ private struct SpendCalendar: View {
         let weeks = weeks()
         let peak = max(summary.days.map(\.tokens).max() ?? 0, 1)
         let cellHeight: CGFloat = weeks.count > 2 ? 14 : 20
+        Revealing { grown in grid(weeks: weeks, peak: peak, cellHeight: cellHeight, grown: grown) }
+    }
+
+    private func grid(weeks: [Week], peak: Int, cellHeight: CGFloat, grown: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 0) {
                 Color.clear.frame(width: Self.labelWidth, height: 1)
@@ -247,8 +263,8 @@ private struct SpendCalendar: View {
             .font(.system(size: 9.5))
             .foregroundStyle(.tertiary)
 
-            ForEach(weeks) { week in
-                weekRow(week, peak: peak, cellHeight: cellHeight)
+            ForEach(Array(weeks.enumerated()), id: \.element.id) { index, week in
+                weekRow(week, index: index, peak: peak, cellHeight: cellHeight, grown: grown)
             }
 
             readout.padding(.top, 2)
@@ -265,7 +281,8 @@ private struct SpendCalendar: View {
         .monospacedDigit()
     }
 
-    private func weekRow(_ week: Week, peak: Int, cellHeight: CGFloat) -> some View {
+    /// Cells pop in along a diagonal wave from the first week's first day.
+    private func weekRow(_ week: Week, index: Int, peak: Int, cellHeight: CGFloat, grown: Bool) -> some View {
         HStack(spacing: 0) {
             Text(week.start.formatted(.dateTime.month(.abbreviated).day()))
                 .font(.system(size: 10.5))
@@ -273,9 +290,13 @@ private struct SpendCalendar: View {
                 .lineLimit(1)
                 .frame(width: Self.labelWidth, alignment: .leading)
             HStack(spacing: Self.cellSpacing) {
-                ForEach(Array(week.slots.enumerated()), id: \.offset) { _, slot in
+                ForEach(Array(week.slots.enumerated()), id: \.offset) { offset, slot in
                     cell(slot, peak: peak, height: cellHeight)
                         .frame(width: Self.cellWidth, height: cellHeight)
+                        .scaleEffect(grown || reduceMotion ? 1 : 0.4)
+                        .opacity(grown ? 1 : 0)
+                        .animation(Motion.curve(grown, Motion.enter, delay: base + 0.04 + 0.025 * Double(index + offset)),
+                                   value: grown)
                 }
             }
             Spacer(minLength: 4)
@@ -430,13 +451,14 @@ private struct BreakdownRows: View {
             VStack(spacing: 0) {
                 switch breakdown {
                 case .models:
-                    ForEach(summary.models.prefix(5)) { model in
+                    ForEach(Array(summary.models.prefix(5).enumerated()), id: \.element.id) { index, model in
                         row(model.displayName, tokens: model.tokens.total, cost: model.cost, help: model.model) {
                             ProviderLogo(provider: model.provider, size: 12)
                         }
+                        .reveal(after: Self.rowDelay(index))
                     }
                 case .projects:
-                    ForEach(summary.projects.prefix(5)) { project in
+                    ForEach(Array(summary.projects.prefix(5).enumerated()), id: \.element.id) { index, project in
                         row(project.name, tokens: project.tokens.total, cost: project.cost,
                             help: project.path.isEmpty ? "Muse Code and Antigravity logs don't record a project folder" : project.path) {
                             Image(systemName: "folder")
@@ -444,12 +466,16 @@ private struct BreakdownRows: View {
                                 .foregroundStyle(.secondary)
                                 .frame(width: 12)
                         }
+                        .reveal(after: Self.rowDelay(index))
                     }
                 }
             }
         }
         .monospacedDigit()
     }
+
+    /// Rows follow the chart above them, one after another.
+    private static func rowDelay(_ index: Int) -> Double { 0.12 + 0.035 * Double(index) }
 
     private func row<Icon: View>(_ name: String, tokens: Int, cost: Double, help: String,
                                  @ViewBuilder icon: () -> Icon) -> some View {

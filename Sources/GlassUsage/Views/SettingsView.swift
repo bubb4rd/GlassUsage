@@ -15,7 +15,7 @@ struct SettingsView: View {
         @Bindable var settings = store.settings
 
         VStack(alignment: .leading, spacing: 0) {
-            header
+            header.reveal(after: 0)
 
             VStack(alignment: .leading, spacing: 8) {
                 stripRow("Track") {
@@ -64,6 +64,7 @@ struct SettingsView: View {
                 }
             }
             .padding(.top, 10)
+            .reveal(after: Motion.step)
 
             VStack(spacing: 0) {
                 row("Open on hover") { Toggle("Open on hover", isOn: $settings.openOnHover) }
@@ -79,6 +80,7 @@ struct SettingsView: View {
             }
             .background(RoundedRectangle(cornerRadius: 10).fill(Theme.fill1))
             .padding(.top, 12)
+            .reveal(after: Motion.step * 2)
         }
         .toggleStyle(.switch)
         .controlSize(.mini)

@@ -78,7 +78,7 @@ final class StatusItemController: NSObject {
         } else {
             button.attributedTitle = NSAttributedString()
         }
-        button.toolTip = panel.isVisible ? nil : snapshot.map(Self.tooltip) ?? "GlassUsage"
+        button.toolTip = panel.isPresented ? nil : snapshot.map(Self.tooltip) ?? "GlassUsage"
     }
 
     private static func tooltip(_ snapshot: ProviderSnapshot) -> String {
@@ -92,7 +92,7 @@ final class StatusItemController: NSObject {
             return
         }
         hoverOpenTask?.cancel()
-        if panel.isVisible {
+        if panel.isPresented {
             if openedByHover { pin() } else { hidePanel() }
         } else {
             showPanel(byHover: false)
@@ -126,7 +126,7 @@ final class StatusItemController: NSObject {
     // MARK: Hover
 
     private func pointerEnteredStatusItem() {
-        guard store.settings.openOnHover, !panel.isVisible else { return }
+        guard store.settings.openOnHover, !panel.isPresented else { return }
         hoverOpenTask?.cancel()
         hoverOpenTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(180))
@@ -150,7 +150,7 @@ final class StatusItemController: NSObject {
     }
 
     private func checkHoverPointer() {
-        guard openedByHover, panel.isVisible else { return stopHoverWatch() }
+        guard openedByHover, panel.isPresented else { return stopHoverWatch() }
         let pointer = NSEvent.mouseLocation
         let zone = panel.frame.union(statusButtonScreenRect()).insetBy(dx: -10, dy: -10)
         if zone.contains(pointer) {
@@ -182,6 +182,7 @@ final class StatusItemController: NSObject {
 
         store.refreshIfStale()
         panel.present()
+        panelModel.revealed = true
         statusItem.button?.highlight(true)
         statusItem.button?.toolTip = nil
 
@@ -211,7 +212,8 @@ final class StatusItemController: NSObject {
     }
 
     private func hidePanel() {
-        guard panel.isVisible else { return }
+        guard panel.isPresented else { return }
+        panelModel.revealed = false
         stopHoverWatch()
         openedByHover = false
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
@@ -238,6 +240,8 @@ final class StatusItemController: NSObject {
 @Observable
 final class PanelModel {
     var showingSettings = false
+    /// Drives the content's entrance as the panel opens and its exit as it closes.
+    var revealed = false
     var range: SpendRange = .today
     var breakdown: SpendBreakdown = .models
 }

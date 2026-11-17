@@ -23,6 +23,7 @@ struct UsagePanelView: View {
             }
             .transition(.opacity)
         }
+        .environment(\.panelRevealed, model.revealed)
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 14)
@@ -69,17 +70,20 @@ struct UsagePanelView: View {
                 }
             }
             .frame(height: 28)
+            .reveal(after: 0)
 
             if providers.isEmpty {
                 Text("Turn on a provider in Settings.")
                     .font(.system(size: 12)).foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity).padding(.vertical, 24)
+                    .reveal(after: Motion.step)
             } else {
                 LimitsSection(store: store, providers: providers, now: now)
                 if settings.showSpend {
                     SpendSection(summary: summary, range: $model.range, breakdown: $model.breakdown,
                                  style: settings.spendView, isLoading: store.localReports.isEmpty)
                         .blockDivider()
+                        .reveal(after: Motion.step * Double(providers.count + 1))
                         .transition(.opacity)
                 }
             }
@@ -107,9 +111,10 @@ struct LimitsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(providers.enumerated()), id: \.element) { index, provider in
-                if index > 0 { Rectangle().fill(Theme.hair).frame(height: 0.5) }
+                if index > 0 { Rectangle().fill(Theme.hair).frame(height: 0.5).reveal(after: Motion.step * Double(index + 1)) }
                 // The first provider's title sits in the panel header.
                 ProviderLimits(provider: provider, state: store.state(for: provider), now: now, showsTitle: index > 0)
+                    .reveal(after: Motion.step * Double(index + 1))
             }
         }
     }
@@ -145,7 +150,7 @@ private struct ProviderLimits: View {
                 HStack(spacing: 0) {
                     ForEach(Array(shownWindows(snapshot, group: group).enumerated()), id: \.element.key) { index, window in
                         if index > 0 { Spacer(minLength: 12) }
-                        LimitRing(window: window, now: now)
+                        LimitRing(window: window, now: now, delay: 0.05 + 0.08 * Double(index))
                     }
                 }
             } else if state.error == nil {
@@ -215,18 +220,28 @@ private struct GroupPicker: View {
 private struct LimitRing: View {
     let window: UsageWindow
     let now: Date
+    /// After the enclosing block starts entering, so rings sweep one after another.
+    let delay: Double
 
-    @State private var shown: Double = 0
+    @Environment(\.revealDelay) private var base
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        Revealing { swept in ring(swept: swept || reduceMotion) }
+    }
+
+    @ViewBuilder
+    private func ring(swept: Bool) -> some View {
         let band = Theme.Band(percent: window.percent)
         HStack(spacing: 11) {
             ZStack {
                 Circle().stroke(Theme.track, lineWidth: 7)
                 Circle()
-                    .trim(from: 0, to: max(shown, 0.01))
+                    .trim(from: 0, to: max(swept ? window.fraction : 0, 0.01))
                     .stroke(band.color, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                     .rotationEffect(.degrees(-90))
+                    .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: window.fraction)
+                    .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text("\(Int(window.percent.rounded()))")
                         .font(.system(size: 18, weight: .semibold))
@@ -259,12 +274,6 @@ private struct LimitRing: View {
             }
         }
         .monospacedDigit()
-        .onAppear {
-            withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.6)) { shown = window.fraction }
-        }
-        .onChange(of: window.fraction) { _, value in
-            withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4)) { shown = value }
-        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(window.group.map { "\($0) " } ?? "")\(window.title) \(Format.percent(window.percent)) used"
             + (window.resetsAt.map { ", resets \(Format.clock($0, now: now))" } ?? ""))

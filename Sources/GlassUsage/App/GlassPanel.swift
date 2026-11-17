@@ -10,7 +10,13 @@ final class GlassPanel: NSPanel {
     static let shadowInsets = NSEdgeInsets(top: 4, left: 24, bottom: 32, right: 24)
 
     var contentSizeHint = CGSize(width: 360, height: 420)
+    /// Open, or opening; false as soon as it starts closing, so a click mid-fade reopens it.
+    private(set) var isPresented = false
     private let glass = NSGlassEffectView()
+    /// Where `place` last put the window, which opening unrolls to even mid-resize.
+    private var restingFrame = NSRect.zero
+    /// Bumped on every open, so a close that's still fading out doesn't hide a panel reopened meanwhile.
+    private var presentation = 0
 
     init() {
         super.init(contentRect: NSRect(origin: .zero, size: contentSizeHint),
@@ -74,6 +80,7 @@ final class GlassPanel: NSPanel {
         let frame = NSRect(x: glassX - insets.left, y: top - contentSize.height - insets.bottom,
                            width: contentSize.width + insets.left + insets.right,
                            height: contentSize.height + insets.top + insets.bottom)
+        restingFrame = frame
         guard animated, frame != self.frame else { return setFrame(frame, display: true) }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Self.resizeDuration
@@ -82,27 +89,48 @@ final class GlassPanel: NSPanel {
         }
     }
 
+    /// Opening drops the panel from the menu bar: it fades in while unrolling from a shorter height, its top
+    /// edge fixed. Closing folds it back up as it fades. Reduce Motion keeps only the fades.
     func present() {
-        alphaValue = 0
+        isPresented = true
+        presentation += 1
+        let motion = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if !isVisible {
+            alphaValue = 0
+            if motion { setFrame(folded(restingFrame), display: false) }
+        }
         orderFrontRegardless()
         makeKey()
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            context.duration = 0.32
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
             animator().alphaValue = 1
+            animator().setFrame(restingFrame, display: true)
         }
     }
 
     func dismiss(completion: @escaping @MainActor () -> Void) {
+        isPresented = false
+        let shown = presentation
+        let motion = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.14
+            context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             animator().alphaValue = 0
+            if motion { animator().setFrame(folded(restingFrame), display: true) }
         } completionHandler: { [weak self] in
             MainActor.assumeIsolated {
-                self?.orderOut(nil)
+                guard let self, self.presentation == shown else { return }
+                self.orderOut(nil)
                 completion()
             }
         }
+    }
+
+    /// `frame` with the glass's bottom raised by a tenth of its height, top edge in place.
+    private func folded(_ frame: NSRect) -> NSRect {
+        let insets = Self.shadowInsets
+        let lift = ((frame.height - insets.top - insets.bottom) * 0.1).rounded()
+        return NSRect(x: frame.minX, y: frame.minY + lift, width: frame.width, height: frame.height - lift)
     }
 }
