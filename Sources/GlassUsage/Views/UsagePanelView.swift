@@ -83,7 +83,7 @@ struct UsagePanelView: View {
                 LimitsSection(store: store, providers: providers, now: now)
                 if settings.showSpend {
                     SpendSection(summary: summary, range: $model.range, breakdown: $model.breakdown,
-                                 style: settings.spendView, isLoading: store.localReports.isEmpty)
+                                 style: settings.spendView, colors: settings.spendColors, isLoading: store.localReports.isEmpty)
                         .environment(\.appSettings, settings)
                         // The same gap as between providers, so every block sits the same distance apart.
                         .padding(.top, 9)

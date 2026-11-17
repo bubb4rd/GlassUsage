@@ -7,6 +7,7 @@ struct SpendSection: View {
     @Binding var range: SpendRange
     @Binding var breakdown: SpendBreakdown
     let style: SpendView
+    let colors: SpendColors
     let isLoading: Bool
 
     var body: some View {
@@ -27,9 +28,10 @@ struct SpendSection: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 6)
             } else {
+                let palette = SpendPalette(style: colors, providers: summary.providers)
                 switch style {
-                case .ledger: SpendLedger(summary: summary, range: range, breakdown: $breakdown)
-                case .calendar: SpendCalendar(summary: summary, range: range, breakdown: $breakdown)
+                case .ledger: SpendLedger(summary: summary, range: range, breakdown: $breakdown, palette: palette)
+                case .calendar: SpendCalendar(summary: summary, range: range, breakdown: $breakdown, palette: palette)
                 }
             }
         }
@@ -75,6 +77,7 @@ private struct SpendLedger: View {
     let summary: SpendSummary
     let range: SpendRange
     @Binding var breakdown: SpendBreakdown
+    let palette: SpendPalette
 
     @State private var hovered: Date?
     @Environment(\.revealDelay) private var base
@@ -91,7 +94,7 @@ private struct SpendLedger: View {
             Revealing { grown in
                 HStack(alignment: .bottom, spacing: spacing) {
                     ForEach(Array(summary.days.enumerated()), id: \.element.id) { index, day in
-                        DayBar(day: day, providers: summary.providers,
+                        DayBar(day: day, providers: summary.providers, palette: palette,
                                height: Self.chartHeight * Double(day.tokens) / Double(peak),
                                progress: grown || reduceMotion ? 1 : 0)
                             .animation(Motion.curve(grown, Motion.draw, delay: base + 0.05 + stagger * Double(index)), value: grown)
@@ -137,7 +140,7 @@ private struct SpendLedger: View {
                     Text("No usage \(range.inPhrase) yet")
                 }
                 Spacer(minLength: 0)
-                if summary.providers.count > 1 { ProviderLegend(providers: summary.providers) }
+                if summary.providers.count > 1 { ProviderLegend(palette: palette) }
             }
             .font(.system(size: 11.5))
             .foregroundStyle(.secondary)
@@ -178,6 +181,7 @@ private struct SpendLedger: View {
 private struct DayBar: View {
     let day: DaySpend
     let providers: [ProviderID]
+    let palette: SpendPalette
     let height: CGFloat
     /// 0 folds the column to its baseline, 1 draws it at full height.
     let progress: CGFloat
@@ -192,7 +196,7 @@ private struct DayBar: View {
             VStack(spacing: slit) {
                 ForEach(segments, id: \.provider) { segment in
                     Rectangle()
-                        .fill(Theme.color(for: segment.provider))
+                        .fill(palette.color(for: segment.provider))
                         .frame(height: inner * Double(segment.tokens) / Double(day.tokens) * progress)
                 }
             }
@@ -218,6 +222,7 @@ private struct SpendCalendar: View {
     let summary: SpendSummary
     let range: SpendRange
     @Binding var breakdown: SpendBreakdown
+    let palette: SpendPalette
 
     @State private var hovered: Date?
     @Environment(\.revealDelay) private var base
@@ -328,12 +333,15 @@ private struct SpendCalendar: View {
             shape.strokeBorder(Theme.hair, lineWidth: 0.5)
         case .day(let day):
             let intensity = day.tokens > 0 ? 0.22 + 0.78 * pow(Double(day.tokens) / Double(peak), 0.7) : 0
-            VStack(spacing: 0) {
-                ForEach(day.segments(summary.providers), id: \.provider) { segment in
+            let segments = day.segments(summary.providers)
+            let slit = segments.count > 1 ? palette.slit : 0
+            let inner = height - slit * CGFloat(segments.count - 1)
+            VStack(spacing: slit) {
+                ForEach(segments, id: \.provider) { segment in
                     Rectangle()
-                        .fill(day.inRange ? Theme.color(for: segment.provider) : Color.primary)
+                        .fill(day.inRange ? palette.color(for: segment.provider) : Color.primary)
                         .opacity(day.inRange ? intensity : intensity * 0.45)
-                        .frame(height: height * Double(segment.tokens) / Double(day.tokens))
+                        .frame(height: inner * Double(segment.tokens) / Double(day.tokens))
                 }
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
@@ -374,9 +382,9 @@ private struct SpendCalendar: View {
     private var chips: some View {
         let tokens = summary.tokens
         return HStack(spacing: 6) {
-            chip(Format.tokens(tokens.output), "out", color: Theme.s2, help: "Output tokens")
-            chip(Format.tokens(tokens.input), "in", color: Theme.s1, help: "Fresh input tokens")
-            chip(share(tokens.cacheRead, of: tokens.total), "cache hits", color: Theme.s3,
+            chip(Format.tokens(tokens.output), "out", color: palette.output, help: "Output tokens")
+            chip(Format.tokens(tokens.input), "in", color: palette.input, help: "Fresh input tokens")
+            chip(share(tokens.cacheRead, of: tokens.total), "cache hits", color: palette.cacheHits,
                  help: "Cache read \(Format.tokens(tokens.cacheRead)) · cache write \(Format.tokens(tokens.cacheWrite)) "
                      + "(\(share(tokens.cacheWrite, of: tokens.total)))")
         }
@@ -428,6 +436,33 @@ private struct SpendCalendar: View {
 private enum SpendColumn {
     static let tokens: CGFloat = 52
     static let cost: CGFloat = 72
+}
+
+/// Fills for the spend charts' provider stacks and legend, and the calendar's token-mix dots.
+private struct SpendPalette {
+    let style: SpendColors
+    /// Providers in the chart, bottom of the stack first.
+    let providers: [ProviderID]
+
+    /// Gray steps by stack position for one to four providers, spread as far apart as the count allows.
+    private static let grays: [[Double]] = [[0.8], [0.8, 0.38], [0.85, 0.55, 0.3], [0.85, 0.62, 0.42, 0.24]]
+
+    func color(for provider: ProviderID) -> Color {
+        switch style {
+        case .providers:
+            return Theme.color(for: provider)
+        case .graphite:
+            let steps = Self.grays[min(max(providers.count, 1), Self.grays.count) - 1]
+            return Color.primary.opacity(steps[min(providers.firstIndex(of: provider) ?? 0, steps.count - 1)])
+        }
+    }
+
+    var output: Color { style == .graphite ? Color.primary.opacity(0.8) : Theme.s2 }
+    var input: Color { style == .graphite ? Color.primary.opacity(0.5) : Theme.s1 }
+    var cacheHits: Color { style == .graphite ? Color.primary.opacity(0.28) : Theme.s3 }
+
+    /// Gray slices are parted by a hairline so neighboring steps still read as separate providers.
+    var slit: CGFloat { style == .graphite ? 1 : 0 }
 }
 
 /// Top models or projects for the range, stepped through with the arrows above them: tokens and cost.
@@ -549,13 +584,13 @@ private struct LogoHint: View {
 }
 
 private struct ProviderLegend: View {
-    let providers: [ProviderID]
+    let palette: SpendPalette
 
     var body: some View {
         HStack(spacing: 12) {
-            ForEach(providers) { provider in
+            ForEach(palette.providers) { provider in
                 HStack(spacing: 5) {
-                    Dot(color: Theme.color(for: provider), size: 7)
+                    Dot(color: palette.color(for: provider), size: 7)
                     Text(provider.displayName)
                 }
             }

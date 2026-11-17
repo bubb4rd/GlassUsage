@@ -32,6 +32,11 @@ struct SettingsView: View {
                     PillPicker(options: SpendView.allCases.map { ($0, $0.label) }, selection: $settings.spendView,
                                symbols: Dictionary(uniqueKeysWithValues: SpendView.allCases.map { ($0, $0.symbol) }))
                 }
+                stripRow("Colors") {
+                    PillPicker(options: SpendColors.allCases.map { ($0, $0.label) }, selection: $settings.spendColors,
+                               symbols: Dictionary(uniqueKeysWithValues: SpendColors.allCases.map { ($0, $0.symbol) }))
+                }
+                .help("How the spend charts tell providers apart: gray steps, or each provider's color")
                 stripRow("Refresh") {
                     PillPicker(options: AppSettings.refreshChoices.map { ($0, "\($0)") }, selection: Binding(
                         get: { settings.refreshMinutes },

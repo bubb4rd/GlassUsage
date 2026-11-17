@@ -26,6 +26,8 @@ final class AppSettings {
     var showSpend: Bool { didSet { defaults.set(showSpend, forKey: Keys.spend) } }
     /// How the spend block draws the days.
     var spendView: SpendView { didSet { defaults.set(spendView.rawValue, forKey: Keys.spendView) } }
+    /// Whether the spend charts tell providers apart by gray steps or by each provider's color.
+    var spendColors: SpendColors { didSet { defaults.set(spendColors.rawValue, forKey: Keys.spendColors) } }
     /// Notify when a tracked limit reaches this level, and again when that window resets.
     var limitAlert: LimitAlertLevel { didSet { defaults.set(limitAlert.rawValue, forKey: Keys.limitAlert) } }
     /// Read project folders macOS guards (Documents, Desktop, Downloads, cloud and external drives), which asks for
@@ -88,6 +90,16 @@ final class AppSettings {
         refreshMinutes = defaults.integer(forKey: Keys.refresh)
         showSpend = defaults.bool(forKey: Keys.spend)
         spendView = SpendView(rawValue: defaults.string(forKey: Keys.spendView) ?? "") ?? .ledger
+        // Graphite for new installs. A Mac that has run GlassUsage before (its support folder holds the price
+        // list and log cache) keeps the provider colors it had. Stored now so the choice holds on later launches.
+        let colors: SpendColors
+        if let stored = SpendColors(rawValue: defaults.string(forKey: Keys.spendColors) ?? "") {
+            colors = stored
+        } else {
+            colors = fm.fileExists(atPath: AppPaths.supportDirectory.path) ? .providers : .graphite
+            defaults.set(colors.rawValue, forKey: Keys.spendColors)
+        }
+        spendColors = colors
         limitAlert = LimitAlertLevel(rawValue: defaults.string(forKey: Keys.limitAlert) ?? "") ?? .off
         readProtectedFolders = defaults.bool(forKey: Keys.protectedFolders)
         logoHintDismissed = defaults.bool(forKey: Keys.logoHintDismissed)
@@ -113,6 +125,7 @@ final class AppSettings {
         static let legacyPercent = "showPercentInMenuBar"
         static let spend = "showSpend"
         static let spendView = "spendView"
+        static let spendColors = "spendColors"
         static let menuBarProvider = "menuBarProvider"
         static let refresh = "refreshMinutes"
         static let limitAlert = "limitAlert"
@@ -145,6 +158,26 @@ enum SpendView: String, CaseIterable {
         switch self {
         case .ledger: "chart.bar.fill"
         case .calendar: "square.grid.3x3.fill"
+        }
+    }
+}
+
+/// How the spend charts tell providers apart. Graphite: gray steps, so color on the panel only marks limits.
+/// Providers: each provider's identity color.
+enum SpendColors: String, CaseIterable {
+    case graphite, providers
+
+    var label: String {
+        switch self {
+        case .graphite: "Graphite"
+        case .providers: "Providers"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .graphite: "circle.lefthalf.filled"
+        case .providers: "paintpalette.fill"
         }
     }
 }
