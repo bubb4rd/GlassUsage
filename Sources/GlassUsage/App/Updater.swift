@@ -2,7 +2,7 @@ import AppKit
 import Observation
 import Sparkle
 
-/// Sparkle updates from the appcast published with each GitHub release (`SUFeedURL` in Info.plist).
+/// Sparkle updates from the appcast on the `appcast` branch (`SUFeedURL` in Info.plist).
 /// Only runs from a real .app bundle, so `swift run` builds don't raise update errors.
 @Observable
 final class Updater: NSObject, SPUUpdaterDelegate, SPUStandardUserDriverDelegate {

@@ -51,8 +51,8 @@ echo "$SHA256  $(basename "$ZIP")" > "$ZIP.sha256"
 cat "$ZIP.sha256"
 
 # Sparkle feed. The app reads appcast.xml from the appcast branch (raw.githubusercontent.com), which isn't a
-# release asset, so update checks don't count as downloads. Releases still carry a copy for installs from before
-# v1.4.1, which read releases/latest/download/appcast.xml.
+# release asset, so update checks don't count as downloads. Releases still carry a copy for v1.4.1 and earlier,
+# which read releases/latest/download/appcast.xml.
 SPARKLE_SIG="$(.build/artifacts/sparkle/Sparkle/bin/sign_update --account "$BUNDLE_ID" "$ZIP")"
 cat > build/appcast.xml <<EOF
 <?xml version="1.0" encoding="utf-8"?>

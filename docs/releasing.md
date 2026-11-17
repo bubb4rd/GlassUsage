@@ -23,7 +23,7 @@ The README never names a version: its badge and download links point at the late
 
 ## How updates reach users
 
-- **Sparkle:** the app's `SUFeedURL` is `https://raw.githubusercontent.com/bubb4rd/GlassUsage/appcast/appcast.xml`, so publishing a release is all it takes. Sparkle compares `CFBundleVersion`, so that number must go up with every release. The feed lives on a branch rather than as a release asset because GitHub counts every asset fetch as a download, and every daily update check would count. Installs from before v1.4.1 still read `releases/latest/download/appcast.xml`, so each release keeps attaching a copy until they've updated.
+- **Sparkle:** the app's `SUFeedURL` is `https://raw.githubusercontent.com/bubb4rd/GlassUsage/appcast/appcast.xml`, so publishing a release is all it takes. Sparkle compares `CFBundleVersion`, so that number must go up with every release. The feed lives on a branch rather than as a release asset because GitHub counts every asset fetch as a download, and every daily update check would count. v1.4.1 and earlier still read `releases/latest/download/appcast.xml`, so each release keeps attaching a copy until they've updated.
 - **Homebrew:** the cask declares `auto_updates true`, so `brew upgrade` leaves updating to Sparkle. New installs get the version in the tap.
 
 ## One-time setup
