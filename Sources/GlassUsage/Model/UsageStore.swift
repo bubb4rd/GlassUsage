@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Observation
 
 @Observable
@@ -13,11 +13,19 @@ final class UsageStore {
     let settings: AppSettings
 
     private var loop: Task<Void, Never>?
+    /// Providers the usage service rate limited: when to ask again, and how many limits in a row.
+    @ObservationIgnored private var backoff: [ProviderID: (until: Date, strikes: Int)] = [:]
+    @ObservationIgnored private var wakeObserver: NSObjectProtocol?
     private static let snapshotsKey = "lastSnapshots"
 
     init(settings: AppSettings) {
         self.settings = settings
         restoreSnapshots()
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            // Readings from before the sleep are stale; give the network a moment to come back first.
+            MainActor.assumeIsolated { self?.start(after: .seconds(5)) }
+        }
     }
 
     func state(for provider: ProviderID) -> ProviderState {
@@ -34,15 +42,25 @@ final class UsageStore {
         return enabled.contains(settings.menuBarProvider) ? settings.menuBarProvider : enabled.first
     }
 
-    func start() {
+    /// (Re)starts the refresh loop: a refresh now (or after `delay`), then one per refresh interval.
+    func start(after delay: Duration = .zero) {
         loop?.cancel()
         loop = Task { [weak self] in
+            try? await Task.sleep(for: delay)
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.refresh()
-                try? await Task.sleep(for: .seconds(self.settings.refreshMinutes * 60))
+                try? await Task.sleep(for: .seconds(self.nextRefreshDelay()))
             }
         }
+    }
+
+    /// The refresh interval, cut short so a fresh reading lands just after a window resets.
+    private func nextRefreshDelay(now: Date = .now) -> TimeInterval {
+        let interval = TimeInterval(settings.refreshMinutes * 60)
+        let reset = settings.enabledProviders.compactMap { states[$0]?.snapshot?.nextReset(after: now) }.min()
+        guard let reset else { return interval }
+        return min(interval, max(reset.timeIntervalSince(now) + 5, 30))
     }
 
     /// Refresh unless data is younger than `maxAge`.
@@ -61,8 +79,10 @@ final class UsageStore {
         }
         // Log scanning is independent of the network; don't make the gauges wait for it.
         Task { await scanLocalLogs() }
+        let now = Date.now
         await withTaskGroup(of: (ProviderID, Result<ProviderSnapshot, ProviderError>).self) { group in
-            for provider in settings.enabledProviders {
+            // A rate-limited provider keeps its reading and error until its backoff ends, even on ⌘R.
+            for provider in settings.enabledProviders where (backoff[provider]?.until ?? .distantPast) <= now {
                 states[provider, default: ProviderState()].isLoading = true
                 group.addTask { (provider, await Self.fetch(provider)) }
             }
@@ -73,6 +93,14 @@ final class UsageStore {
                 case .success(let snapshot):
                     state.snapshot = snapshot
                     state.error = nil
+                    backoff[provider] = nil
+                case .failure(.rateLimited(let until)):
+                    // The service's Retry-After when it sends one, else 5, 10, 20… minutes, at most an hour.
+                    let strikes = (backoff[provider]?.strikes ?? 0) + 1
+                    let fallback = now.addingTimeInterval(min(300 * pow(2, Double(strikes - 1)), 3600))
+                    let retryAt = min(until ?? fallback, now.addingTimeInterval(3600))
+                    backoff[provider] = (retryAt, strikes)
+                    state.error = .rateLimited(until: retryAt)
                 case .failure(let error):
                     // Keep the last good reading on screen; its timestamp shows its age.
                     state.error = error

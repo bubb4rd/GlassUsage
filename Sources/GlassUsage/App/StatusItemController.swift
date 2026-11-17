@@ -66,7 +66,7 @@ final class StatusItemController: NSObject {
         guard let button = statusItem.button else { return }
         let provider = store.menuBarProvider
         let state = provider.map { store.state(for: $0) }
-        let snapshot = state?.snapshot
+        let snapshot = state?.snapshot?.current(at: .now)
 
         let settings = store.settings
         button.image = StatusIcon.image(for: state, rings: settings.menuBarRings)

@@ -124,19 +124,20 @@ private struct ProviderLimits: View {
     @State private var pickedGroup: String?
 
     var body: some View {
-        let group = state.snapshot.flatMap(shownGroup)
+        let snapshot = state.snapshot?.current(at: now)
+        let group = snapshot.flatMap(shownGroup)
         VStack(alignment: .leading, spacing: 0) {
             if showsTitle || group != nil {
                 HStack(spacing: 7) {
                     if showsTitle { ProviderTitle(provider: provider, state: state) }
-                    if let snapshot = state.snapshot, let group {
+                    if let snapshot, let group {
                         GroupPicker(groups: snapshot.groups, selected: group) { pickedGroup = $0 }
                     }
                 }
                 .padding(.bottom, showsTitle ? 6 : 8)
             }
 
-            if let snapshot = state.snapshot {
+            if let snapshot {
                 // Rings spread so the first starts at the leading edge and the last ends at the trailing one. Keyed
                 // by window length across all groups, so a ring keeps its place (and animates) when the group changes.
                 HStack(spacing: 0) {

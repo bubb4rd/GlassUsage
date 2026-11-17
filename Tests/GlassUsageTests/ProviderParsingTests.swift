@@ -149,4 +149,47 @@ import Testing
         let price = try #require(PricingTable.builtIn.price(for: "muse-spark-1.3-contributor"))
         #expect(price.input == 0.1 / 1e6, "contributor must not fall back to the 12x pricier base model")
     }
+
+    @Test func claudeUsageReadsFiveHourAndWeek() throws {
+        let snapshot = try ClaudeProvider.parseUsage(try json("""
+        {"five_hour": {"utilization": 37.0, "resets_at": "2026-11-16T22:00:00.123456+00:00"},
+         "seven_day": {"utilization": 81.5, "resets_at": "2026-11-20T08:00:00+00:00"},
+         "seven_day_opus": null}
+        """), plan: ClaudeProvider.planName(subscription: "max", tier: "default_claude_max_20x"), fetchedAt: .now)
+
+        #expect(snapshot.plan == "Max 20x")
+        #expect(snapshot.windows.map(\.key) == ["session", "weekly"])
+        #expect(snapshot.windows.map(\.percent) == [37, 81.5])
+        #expect(snapshot.windows.first?.resetsAt == Date(timeIntervalSince1970: 1_794_866_400),
+                "microsecond timestamps with an offset must parse")
+    }
+
+    @Test func claudeIdleSessionLeavesWeekOnly() throws {
+        let snapshot = try ClaudeProvider.parseUsage(try json("""
+        {"five_hour": null, "seven_day": {"utilization": 3, "resets_at": "2026-11-20T08:00:00Z"}}
+        """), plan: nil, fetchedAt: .now)
+        #expect(snapshot.windows.map(\.key) == ["weekly"])
+    }
+
+    @Test func codexWindowsSortShortestFirst() throws {
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = try CodexProvider.parseUsage(try json("""
+        {"plan_type": "plus", "rate_limit": {
+          "primary_window": {"used_percent": 40, "limit_window_seconds": 604800, "reset_at": 1800300000},
+          "secondary_window": {"used_percent": 12, "limit_window_seconds": 18000, "reset_after_seconds": 600}}}
+        """), fetchedAt: fetchedAt)
+
+        #expect(snapshot.plan == "Plus")
+        #expect(snapshot.windows.map(\.key) == ["session", "weekly"])
+        #expect(snapshot.windows.map(\.percent) == [12, 40])
+        #expect(snapshot.windows.first?.resetsAt == fetchedAt.addingTimeInterval(600))
+        #expect(snapshot.windows.last?.resetsAt == Date(timeIntervalSince1970: 1_800_300_000))
+    }
+
+    @Test func retryAfterReadsSecondsAndHTTPDates() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        #expect(HTTP.retryDate("120", now: now) == now.addingTimeInterval(120))
+        #expect(HTTP.retryDate("Wed, 21 Oct 2026 07:28:00 GMT", now: now) == Date(timeIntervalSince1970: 1_792_567_680))
+        #expect(HTTP.retryDate(nil, now: now) == nil)
+    }
 }

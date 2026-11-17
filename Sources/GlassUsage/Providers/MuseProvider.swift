@@ -22,7 +22,7 @@ nonisolated enum MuseProvider {
     private static let command = "muse usage"
 
     static func fetch() async throws -> ProviderSnapshot {
-        guard let muse = await Shell.which("muse") else { throw ProviderError.notSignedIn(.muse) }
+        guard let muse = await Shell.which("muse") else { throw ProviderError.commandNotFound(.muse, command: "muse") }
         var environment = ProcessInfo.processInfo.environment
         environment["MUSE_NO_AUTO_UPDATE"] = "1"
         let output = try await Shell.run(muse, ["usage", "--json"], environment: environment, timeout: 20)

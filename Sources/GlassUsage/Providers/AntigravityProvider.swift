@@ -13,7 +13,7 @@ nonisolated enum AntigravityProvider {
     private static let command = "agy -p /usage"
 
     static func fetch() async throws -> ProviderSnapshot {
-        guard let agy = await Shell.which("agy") else { throw ProviderError.notSignedIn(.antigravity) }
+        guard let agy = await Shell.which("agy") else { throw ProviderError.commandNotFound(.antigravity, command: "agy") }
         // Print mode never leaves a conversation behind, but run it outside any project anyway.
         let workDir = AppPaths.supportDirectory.appending(path: "agy-probe", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)

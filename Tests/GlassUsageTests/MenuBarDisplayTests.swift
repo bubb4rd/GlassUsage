@@ -28,4 +28,17 @@ import Testing
         #expect(StatusIcon.percentText(for: snapshot, mode: .session) == nil)
         #expect(StatusIcon.percentText(for: snapshot, mode: .both) == "12%")
     }
+
+    @Test func readingFromBeforeAResetShowsTheWindowEmpty() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = ProviderSnapshot(provider: .claude, plan: nil, windows: [
+            UsageWindow(key: "session", title: "Session", percent: 95, resetsAt: now.addingTimeInterval(-60), duration: 18_000),
+            UsageWindow(key: "weekly", title: "Weekly", percent: 40, resetsAt: now.addingTimeInterval(86_400), duration: 604_800),
+        ], fetchedAt: now.addingTimeInterval(-3600))
+
+        #expect(StatusIcon.percentText(for: snapshot, mode: .highest, now: now) == "40%", "the reset session no longer counts")
+        #expect(StatusIcon.percentText(for: snapshot, mode: .both, now: now) == "0% · 40%")
+        #expect(snapshot.current(at: now).windows.first?.resetsAt == nil, "the next reset is unknown until a fresh reading")
+        #expect(snapshot.nextReset(after: now) == now.addingTimeInterval(86_400))
+    }
 }

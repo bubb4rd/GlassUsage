@@ -42,10 +42,21 @@ nonisolated enum HTTP {
         switch status {
         case 200..<300: break
         case 401, 403: throw ProviderError.unauthorized(provider)
-        case 429: throw ProviderError.rateLimited
+        case 429: throw ProviderError.rateLimited(until: retryDate((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After")))
         default: throw ProviderError.http(status)
         }
         do { return try JSON(data: data) } catch { throw ProviderError.malformed("not JSON") }
+    }
+
+    /// A `Retry-After` header, given either as seconds or as an HTTP date.
+    static func retryDate(_ header: String?, now: Date = .now) -> Date? {
+        guard let value = header?.trimmingCharacters(in: .whitespaces), !value.isEmpty else { return nil }
+        if let seconds = TimeInterval(value) { return now.addingTimeInterval(max(seconds, 0)) }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return formatter.date(from: value)
     }
 }
 
@@ -87,8 +98,13 @@ nonisolated enum Shell {
                       stderr: String(decoding: errorData, as: UTF8.self))
     }
 
-    /// Resolves a CLI the way the user's terminal would (nvm, Homebrew, ~/.local/bin…).
+    /// Resolves a CLI the way the user's terminal would (nvm, Homebrew, ~/.local/bin…). Remembered, so the
+    /// login-shell lookup doesn't run on every refresh.
     static func which(_ command: String) async -> String? {
+        await CommandPaths.shared.resolve(command)
+    }
+
+    fileprivate static func lookUp(_ command: String) async -> String? {
         let home = URL.homeDirectory.path
         let candidates = [
             "\(home)/.local/bin/\(command)",
@@ -101,6 +117,25 @@ nonisolated enum Shell {
         guard let output = try? await run(shell, ["-lic", "command -v \(command)"], timeout: 10) else { return nil }
         let path = output.stdout.split(separator: "\n").last.map(String.init)?.trimmingCharacters(in: .whitespaces)
         guard let path, path.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: path) else { return nil }
+        return path
+    }
+}
+
+/// Where each CLI was last found. A found path is reused while it stays executable; a miss is retried
+/// after a few minutes, so installing a CLI is picked up without restarting GlassUsage.
+private actor CommandPaths {
+    static let shared = CommandPaths()
+    private static let missRetry: TimeInterval = 10 * 60
+
+    private var found: [String: String] = [:]
+    private var missedAt: [String: Date] = [:]
+
+    func resolve(_ command: String) async -> String? {
+        if let path = found[command], FileManager.default.isExecutableFile(atPath: path) { return path }
+        if let missed = missedAt[command], Date.now.timeIntervalSince(missed) < Self.missRetry { return nil }
+        let path = await Shell.lookUp(command)
+        found[command] = path
+        missedAt[command] = path == nil ? .now : nil
         return path
     }
 }

@@ -10,7 +10,7 @@ enum StatusIcon {
     /// The glyph for a provider's latest state, as the menu bar draws it. Providers that meter model
     /// groups show the group closest to its limit.
     static func image(for state: ProviderState?, rings: MenuBarRings, now: Date = .now) -> NSImage {
-        let snapshot = state?.snapshot
+        let snapshot = state?.snapshot?.current(at: now)
         let stale = snapshot.map { now.timeIntervalSince($0.fetchedAt) > staleAfter } ?? true
         let windows = snapshot?.iconWindows ?? []
         let fractions: [Double?] = switch rings {
@@ -23,7 +23,8 @@ enum StatusIcon {
     }
 
     /// The percentage beside the glyph, or nil when the mode is off or the window has no reading.
-    static func percentText(for snapshot: ProviderSnapshot?, mode: MenuBarPercent) -> String? {
+    static func percentText(for snapshot: ProviderSnapshot?, mode: MenuBarPercent, now: Date = .now) -> String? {
+        let snapshot = snapshot?.current(at: now)
         func percent(_ window: UsageWindow?) -> String? { window.map { "\(Int($0.percent.rounded()))%" } }
         switch mode {
         case .off: return nil

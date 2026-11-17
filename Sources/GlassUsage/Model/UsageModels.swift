@@ -41,6 +41,9 @@ nonisolated struct UsageWindow: Codable, Hashable, Identifiable, Sendable {
     var fraction: Double { min(max(percent / 100, 0), 1) }
     var windowStart: Date? { resetsAt.map { $0.addingTimeInterval(-duration) } }
 
+    /// The provider's reset time has passed, so this reading no longer describes the window.
+    func hasReset(at now: Date) -> Bool { resetsAt.map { $0 <= now } ?? false }
+
     static func titleAndKey(forSeconds seconds: TimeInterval) -> (key: String, title: String) {
         let hours = seconds / 3600
         switch hours {
@@ -81,29 +84,54 @@ nonisolated struct ProviderSnapshot: Codable, Hashable, Sendable {
 
     /// The menu bar group's longest window: the week, or the month on some Codex plans.
     var longWindow: UsageWindow? { iconWindows.last { $0.key != "session" } }
+
+    /// The reading as of `now`: a window whose reset has passed reads 0% with no known reset until the next
+    /// fetch, so an old reading never shows a limit that has already reset.
+    func current(at now: Date) -> ProviderSnapshot {
+        guard windows.contains(where: { $0.hasReset(at: now) }) else { return self }
+        let windows = windows.map { window in
+            window.hasReset(at: now)
+                ? UsageWindow(key: window.key, title: window.title, percent: 0, resetsAt: nil,
+                              duration: window.duration, group: window.group)
+                : window
+        }
+        return ProviderSnapshot(provider: provider, plan: plan, windows: windows, fetchedAt: fetchedAt)
+    }
+
+    /// The earliest reset still ahead of `now`, when a fresh reading is worth fetching.
+    func nextReset(after now: Date) -> Date? {
+        windows.compactMap(\.resetsAt).filter { $0 > now }.min()
+    }
 }
 
 nonisolated enum ProviderError: LocalizedError, Sendable {
     case notSignedIn(ProviderID)
     case unauthorized(ProviderID)
-    case rateLimited
+    /// `until` is when to ask again: the service's Retry-After, or GlassUsage's own backoff.
+    case rateLimited(until: Date?)
     case http(Int)
     case malformed(String)
     case noQuota(ProviderID)
     case network(String)
     /// A provider CLI that reports limits for GlassUsage exited with an error.
     case commandFailed(String)
+    /// The provider CLI GlassUsage asks for limits isn't installed, or isn't on the login shell's PATH.
+    case commandNotFound(ProviderID, command: String)
 
     var errorDescription: String? {
         switch self {
         case .notSignedIn(let id): "Not connected. \(id.signInHint)"
         case .unauthorized(let id): "Sign-in expired. \(id.signInHint)"
-        case .rateLimited: "The usage service is rate limiting requests. Retrying later."
+        case .rateLimited(let until):
+            "The usage service is rate limiting requests. Retrying "
+                + (until.map { "at \($0.formatted(date: .omitted, time: .shortened))." } ?? "later.")
         case .http(let code): "The usage service returned HTTP \(code)."
         case .malformed(let what): "Unexpected response: \(what)."
         case .noQuota(let id): "\(id.displayName) did not report plan limits for this account."
         case .network(let message): message
         case .commandFailed(let message): message
+        case .commandNotFound(let id, let command):
+            "`\(command)` wasn't found. Install the \(id.displayName) CLI, or add it to your shell's PATH."
         }
     }
 

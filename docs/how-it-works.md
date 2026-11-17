@@ -16,6 +16,8 @@ GlassUsage has no account or server of its own. It reads what Claude Code, Codex
 - Antigravity and Muse Code keep their logins in the Keychain under their own access lists, so GlassUsage asks their CLIs instead. Both commands report the allowance without running a model turn or spending quota.
 - Antigravity meters model groups separately (Gemini, Claude and GPT, Gemini 4 Argon), each with its own 5-hour and weekly window, so the panel shows one group's rings at a time with dots to switch, and the panel and menu bar start on the group closest to its limit.
 - None of these endpoints or commands is a documented API, and they may change. GlassUsage shows exactly the windows the provider reports and never estimates a limit.
+- Limits refresh on the interval set in Settings, just after a window's reset time, and a few seconds after the Mac wakes. Once a window's reset time has passed, it reads 0% until the next reading arrives.
+- When a usage service rate-limits GlassUsage, it waits as long as the service asks (`Retry-After`, at most an hour), or otherwise 5 minutes, doubling up to an hour, before asking that service again.
 
 ## Token spend
 
