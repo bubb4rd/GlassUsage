@@ -133,7 +133,7 @@ struct SettingsView: View {
     private var privacyNotes: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("**Limits.** Reads Claude Code's Keychain login and Codex's auth.json, and asks the Antigravity and Muse Code CLIs (`agy -p /usage`, `muse usage`). Tokens are only read, never refreshed or stored.")
-            Text("**Spend.** Token spend comes from Claude Code, Codex CLI, Antigravity, Muse Code, omp, Cline, Roo Code and Kilo Code logs on this Mac, priced with LiteLLM's public list.")
+            Text("**Spend.** Token spend comes from Claude Code, Codex CLI, Muse Code and omp logs on this Mac, priced with LiteLLM's public list.")
             Text("**Project logos.** Reads each project folder's app icon, logo or favicon. Folders in Documents, Desktop, Downloads, cloud storage and external drives are only read once you turn that on, in Settings or under the Projects list.")
         }
         .font(.system(size: 11.5))
