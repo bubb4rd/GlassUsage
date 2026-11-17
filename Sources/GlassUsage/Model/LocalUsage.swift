@@ -76,9 +76,18 @@ nonisolated struct LocalUsageReport: Sendable {
         var days: [Date: DayUsage] = [:]
         var sources = Set<LocalSource>()
         var hasUnpriced = false
+        // Matching a model id against the catalog scans every key, so do it once per model, not per entry.
+        var prices: [String: ModelPrice?] = [:]
 
         for entry in entries where entry.provider == provider && entry.at >= firstDay {
-            let cost = entry.recordedCost ?? pricing.cost(model: entry.model, tokens: entry.tokens, cacheWrite1h: entry.cacheWrite1h)
+            let price: ModelPrice?
+            if let known = prices[entry.model] {
+                price = known
+            } else {
+                price = pricing.price(for: entry.model)
+                prices[entry.model] = .some(price)
+            }
+            let cost = entry.recordedCost ?? price?.cost(tokens: entry.tokens, cacheWrite1h: entry.cacheWrite1h)
             if cost == nil { hasUnpriced = true }
             sources.insert(entry.source)
             let day = calendar.startOfDay(for: entry.at)

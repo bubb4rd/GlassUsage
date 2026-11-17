@@ -1,9 +1,11 @@
+import CryptoKit
 import Foundation
 
 /// Reads token usage from local agent session logs, ccusage-style.
 ///
 /// Logs are append-only, so each file is parsed once and then only from its last offset;
-/// parsed entries are cached on disk. Only files touched within the report range are read.
+/// parsed entries are cached on disk, one file per log, so a scan rewrites only the logs that grew.
+/// Only files touched within the report range are read.
 actor LocalUsageScanner {
     static let shared = LocalUsageScanner()
     static let reportDays = 30
@@ -17,48 +19,49 @@ actor LocalUsageScanner {
         var entries: [UsageEntry]
     }
 
-    private struct Cache: Codable {
+    /// One log's parse state as stored in `local-usage-cache/<SHA-1 of the log path>.plist`.
+    private struct StoredFile: Codable {
         static let currentVersion = 1
         var version = currentVersion
-        var files: [String: FileState] = [:]
+        let path: String
+        let state: FileState
     }
 
-    private var cache: Cache?
+    /// Parse state by log path; loaded from disk on the first scan.
+    private var files: [String: FileState]?
     private var pricing: PricingTable?
 
-    private var cacheURL: URL { AppPaths.supportDirectory.appending(path: "local-usage-cache.plist") }
+    private var cacheDirectory: URL { AppPaths.supportDirectory.appending(path: "local-usage-cache", directoryHint: .isDirectory) }
 
     func scan(now: Date = .now) async -> [ProviderID: LocalUsageReport] {
         if pricing == nil || pricing!.fetchedAt.map({ now.timeIntervalSince($0) > 24 * 3600 }) ?? true {
             pricing = await PricingTable.load()
         }
-        var cache = self.cache ?? loadCache()
+        var files = self.files ?? loadCache()
         let cutoff = now.addingTimeInterval(-Double(Self.reportDays + 1) * 86_400)
         var seen = Set<String>()
-        var changed = false
+        var changed: [String] = []
 
         for (source, roots) in Self.roots() {
             for file in Self.logFiles(in: roots, source: source, modifiedAfter: cutoff) {
                 seen.insert(file.path)
-                let previous = cache.files[file.path]
+                let previous = files[file.path]
                 // Same length means no new lines (in-place header rewrites such as session titles).
                 if let previous, previous.size == file.size, previous.modified == file.modified { continue }
                 // Grown files continue from the last parsed line; shrunk ones start over.
                 let resume = previous.flatMap { $0.size < file.size ? $0 : nil }
-                cache.files[file.path] = Self.parse(file, source: source, resume: resume)
-                changed = true
+                files[file.path] = Self.parse(file, source: source, resume: resume)
+                changed.append(file.path)
             }
         }
-        for path in cache.files.keys where !seen.contains(path) {
-            cache.files[path] = nil
-            changed = true
-        }
-        self.cache = cache
-        if changed { saveCache(cache) }
+        let removed = files.keys.filter { !seen.contains($0) }
+        for path in removed { files[path] = nil }
+        self.files = files
+        saveCache(changed: changed, removed: removed, in: files)
 
         var keys = Set<String>()
         var entries: [UsageEntry] = []
-        for state in cache.files.values {
+        for state in files.values {
             for entry in state.entries where entry.at >= cutoff && keys.insert(entry.key).inserted {
                 entries.append(entry)
             }
@@ -156,8 +159,8 @@ actor LocalUsageScanner {
 
     /// Calls `body` for each complete line after `offset` that contains one of `needles`.
     /// Returns the offset just past the last complete line.
-    private static func forEachLine(in data: Data, from offset: Int, containingAny needles: [[UInt8]],
-                                    body: (Data) -> Void) -> Int {
+    static func forEachLine(in data: Data, from offset: Int, containingAny needles: [[UInt8]],
+                            body: (Data) -> Void) -> Int {
         data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Int in
             guard let base = raw.baseAddress, offset < raw.count else { return offset }
             var start = offset
@@ -180,19 +183,42 @@ actor LocalUsageScanner {
 
     // MARK: Cache persistence
 
-    private func loadCache() -> Cache {
-        guard let data = try? Data(contentsOf: cacheURL),
-              let cache = try? PropertyListDecoder().decode(Cache.self, from: data),
-              cache.version == Cache.currentVersion else { return Cache() }
-        return cache
+    private func cacheFileURL(for path: String) -> URL {
+        let digest = Insecure.SHA1.hash(data: Data(path.utf8)).map { String(format: "%02x", $0) }.joined()
+        return cacheDirectory.appending(path: "\(digest).plist")
     }
 
-    private func saveCache(_ cache: Cache) {
+    private func loadCache() -> [String: FileState] {
+        let fm = FileManager.default
+        // Before 1.2.6 the whole cache was one plist, rewritten on every scan.
+        try? fm.removeItem(at: AppPaths.supportDirectory.appending(path: "local-usage-cache.plist"))
+        var files: [String: FileState] = [:]
+        let urls = (try? fm.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: nil)) ?? []
+        let decoder = PropertyListDecoder()
+        for url in urls {
+            guard let data = try? Data(contentsOf: url),
+                  let stored = try? decoder.decode(StoredFile.self, from: data),
+                  stored.version == StoredFile.currentVersion else {
+                // Unreadable or from another version: its log is parsed afresh.
+                try? fm.removeItem(at: url)
+                continue
+            }
+            files[stored.path] = stored.state
+        }
+        return files
+    }
+
+    private func saveCache(changed: [String], removed: [String], in files: [String: FileState]) {
+        guard !changed.isEmpty || !removed.isEmpty else { return }
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
         do {
-            try FileManager.default.createDirectory(at: AppPaths.supportDirectory, withIntermediateDirectories: true)
-            try encoder.encode(cache).write(to: cacheURL, options: .atomic)
+            try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+            for path in removed { try? FileManager.default.removeItem(at: cacheFileURL(for: path)) }
+            for path in changed {
+                guard let state = files[path] else { continue }
+                try encoder.encode(StoredFile(path: path, state: state)).write(to: cacheFileURL(for: path), options: .atomic)
+            }
         } catch {
             NSLog("GlassUsage: failed to save local usage cache: \(error)")
         }

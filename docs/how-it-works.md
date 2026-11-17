@@ -32,7 +32,7 @@ Spend is read from local session logs in the same way as [ccusage](https://githu
 | omp | `~/.omp/agent/sessions/**/*.jsonl` | Uses the cost omp recorded; `anthropic` counts toward Claude, `openai`/`openai-codex` toward Codex |
 
 - Only logs changed in the last 30 days are read, and each log is parsed incrementally from where the previous scan stopped. Antigravity databases are reread whole when they or their write-ahead log change.
-- Parsed entries are cached in `~/Library/Application Support/GlassUsage/local-usage-cache.plist`.
+- Parsed entries are cached in `~/Library/Application Support/GlassUsage/local-usage-cache/`, one file per log, so a scan rewrites only the logs that changed.
 - Costs are API-equivalent list prices from [LiteLLM's catalog](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json). This is what the tokens would cost on the API, not what a subscription bills you. The catalog is refreshed daily, and a built-in table covers offline use.
 
 ## Network access

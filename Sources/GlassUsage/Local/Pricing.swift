@@ -7,6 +7,18 @@ nonisolated struct ModelPrice: Codable, Hashable, Sendable {
     let cacheRead: Double?
     let cacheWrite: Double?
     let cacheWrite1h: Double?
+
+    /// API-equivalent cost of one response's tokens at these prices.
+    func cost(tokens: TokenCounts, cacheWrite1h: Int) -> Double {
+        let write5m = tokens.cacheWrite - cacheWrite1h
+        let writeRate = cacheWrite ?? input * 1.25
+        let write1hRate = self.cacheWrite1h ?? writeRate * 1.6
+        return Double(tokens.input) * input
+            + Double(tokens.output) * output
+            + Double(tokens.cacheRead) * (cacheRead ?? input * 0.1)
+            + Double(write5m) * writeRate
+            + Double(cacheWrite1h) * write1hRate
+    }
 }
 
 /// Model prices from LiteLLM's public catalog (the table ccusage uses), cached for a day,
@@ -27,19 +39,6 @@ nonisolated struct PricingTable: Codable, Sendable {
         if let match { return prices[match] }
         // A cached catalog from before a family was added still prices it from the built-in table.
         return fetchedAt == nil ? nil : Self.builtIn.price(for: model)
-    }
-
-    /// API-equivalent cost, or nil when the model isn't in the catalog.
-    func cost(model: String, tokens: TokenCounts, cacheWrite1h: Int) -> Double? {
-        guard let price = price(for: model) else { return nil }
-        let write5m = tokens.cacheWrite - cacheWrite1h
-        let writeRate = price.cacheWrite ?? price.input * 1.25
-        let write1hRate = price.cacheWrite1h ?? writeRate * 1.6
-        return Double(tokens.input) * price.input
-            + Double(tokens.output) * price.output
-            + Double(tokens.cacheRead) * (price.cacheRead ?? price.input * 0.1)
-            + Double(write5m) * writeRate
-            + Double(cacheWrite1h) * write1hRate
     }
 
     // MARK: Loading
