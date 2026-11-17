@@ -125,6 +125,7 @@ struct SettingsView: View {
                     .fixedSize()
                 }
                 .buttonStyle(.plain)
+                .pointingHand()
                 .help("GlassUsage \(version) is available")
             } else if updater.isAvailable {
                 IconButton(symbol: "arrow.down.circle", help: "Check for updates") { updater.checkForUpdates() }
@@ -313,6 +314,7 @@ private extension View {
                 }
             }
             .contentShape(shape)
+            .pointingHand()
     }
 }
 

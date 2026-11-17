@@ -17,6 +17,7 @@ final class GlassPanel: NSPanel {
     private var restingFrame = NSRect.zero
     /// Bumped on every open, so a close that's still fading out doesn't hide a panel reopened meanwhile.
     private var presentation = 0
+    private let cursorTracker = CursorTracker()
 
     init() {
         super.init(contentRect: NSRect(origin: .zero, size: contentSizeHint),
@@ -45,6 +46,9 @@ final class GlassPanel: NSPanel {
                              height: container.bounds.height - insets.top - insets.bottom)
         glass.autoresizingMask = [.width, .height]
         container.addSubview(glass)
+        glass.addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                                             owner: cursorTracker))
+        PanelCursor.allowSettingInBackground()
         contentView = container
     }
 
@@ -112,6 +116,7 @@ final class GlassPanel: NSPanel {
 
     func dismiss(completion: @escaping @MainActor () -> Void) {
         isPresented = false
+        PanelCursor.pointerInside = false
         let shown = presentation
         let motion = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         NSAnimationContext.runAnimationGroup { context in
@@ -133,5 +138,43 @@ final class GlassPanel: NSPanel {
         let insets = Self.shadowInsets
         let lift = ((frame.height - insets.top - insets.bottom) * 0.1).rounded()
         return NSRect(x: frame.minX, y: frame.minY + lift, width: frame.width, height: frame.height - lift)
+    }
+}
+
+/// Hands the pointer's moves over the glass to `PanelCursor`. The app underneath answers the same moves with its
+/// own cursor, often a few milliseconds after ours (a web view picks it in another process), so after each move the
+/// cursor is set again every millisecond until that app has had time to answer. Its cursor then lasts about a
+/// millisecond, which a screen refresh rarely catches; resetting once per frame left it up for a whole frame.
+private final class CursorTracker: NSResponder {
+    private static let settle: CFTimeInterval = 0.25
+    private var timer: Timer?
+    private var holdUntil: CFTimeInterval = 0
+
+    override func mouseEntered(with event: NSEvent) { moved() }
+    override func mouseMoved(with event: NSEvent) { moved() }
+    override func mouseExited(with event: NSEvent) {
+        PanelCursor.pointerInside = false
+        stop()
+    }
+
+    private func moved() {
+        PanelCursor.pointerInside = true
+        holdUntil = CACurrentMediaTime() + Self.settle
+        guard timer == nil else { return }
+        let timer = Timer(timeInterval: 0.001, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reassert() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    private func reassert() {
+        guard PanelCursor.pointerInside, CACurrentMediaTime() < holdUntil else { return stop() }
+        PanelCursor.apply()
+    }
+
+    private func stop() {
+        timer?.invalidate()
+        timer = nil
     }
 }

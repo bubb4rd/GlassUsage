@@ -651,6 +651,7 @@ private struct LogoHint: View {
                 .contentShape(.rect)
             }
             .foregroundStyle(.secondary)
+            .pointingHand()
             .help("Show each project's logo and count subfolders and worktrees toward their repository. macOS asks for access to these folders first.")
             Spacer(minLength: 6)
             Button {
@@ -662,6 +663,7 @@ private struct LogoHint: View {
                     .contentShape(.rect)
             }
             .foregroundStyle(.tertiary)
+            .pointingHand()
             .help("Hide. This can be turned on in Settings.")
         }
         .buttonStyle(.plain)

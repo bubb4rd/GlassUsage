@@ -109,6 +109,7 @@ struct IconButton: View {
                 .contentShape(RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
+        .pointingHand()
         .foregroundStyle(active || hovering ? .primary : .secondary)
         .onHover { hovering = $0 }
         .help(help)
@@ -149,6 +150,7 @@ struct PillPicker<Value: Hashable>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .pointingHand()
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
@@ -208,6 +210,7 @@ private struct ArrowButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointingHand()
         .foregroundStyle(hovering ? .primary : .secondary)
         .onHover { hovering = $0 }
         .help(help)
