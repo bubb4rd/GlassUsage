@@ -469,7 +469,7 @@ private struct BreakdownRows: View {
                         }
                         .reveal(after: Self.rowDelay(index))
                     }
-                    if let settings, !settings.logosFromProtectedFolders, !settings.logoHintDismissed,
+                    if let settings, !settings.readProtectedFolders, !settings.logoHintDismissed,
                        summary.projects.contains(where: { ProjectIcons.isProtected($0.path) }) {
                         LogoHint(settings: settings)
                             .reveal(after: Self.rowDelay(summary.projects.count))
@@ -509,26 +509,26 @@ private struct BreakdownRows: View {
     }
 }
 
-/// Offered under the projects while some are in folders macOS guards and their logos are off. Turning
-/// them on here is what sets off macOS's permission prompt; the panel never does on its own.
+/// Offered under the projects while some are in folders macOS guards and reading them is off. Turning
+/// it on here is what sets off macOS's permission prompt; the panel never does on its own.
 private struct LogoHint: View {
     let settings: AppSettings
 
     var body: some View {
         HStack(spacing: 8) {
             Button {
-                settings.logosFromProtectedFolders = true
+                settings.readProtectedFolders = true
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "photo")
+                    Image(systemName: "folder")
                         .font(.system(size: 9, weight: .semibold))
                         .frame(width: 14)
-                    Text("Show logos from Documents & Desktop")
+                    Text("Read projects in Documents & Desktop")
                 }
                 .contentShape(.rect)
             }
             .foregroundStyle(.secondary)
-            .help("Read each project's app icon or logo. macOS asks for access to these folders first.")
+            .help("Show each project's logo and count subfolders and worktrees toward their repository. macOS asks for access to these folders first.")
             Spacer(minLength: 6)
             Button {
                 withAnimation(.easeOut(duration: 0.2)) { settings.logoHintDismissed = true }
@@ -539,7 +539,7 @@ private struct LogoHint: View {
                     .contentShape(.rect)
             }
             .foregroundStyle(.tertiary)
-            .help("Hide. Logos can be turned on in Settings.")
+            .help("Hide. This can be turned on in Settings.")
         }
         .buttonStyle(.plain)
         .font(.system(size: 11.5))

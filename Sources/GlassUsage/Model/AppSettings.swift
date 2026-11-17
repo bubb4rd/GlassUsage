@@ -28,10 +28,11 @@ final class AppSettings {
     var spendView: SpendView { didSet { defaults.set(spendView.rawValue, forKey: Keys.spendView) } }
     /// Notify when a tracked limit reaches this level, and again when that window resets.
     var limitAlert: LimitAlertLevel { didSet { defaults.set(limitAlert.rawValue, forKey: Keys.limitAlert) } }
-    /// Look for project logos in folders macOS guards (Documents, Desktop, Downloads, cloud and external drives),
-    /// which asks for access the first time. Elsewhere logos need no permission and are always looked up.
-    var logosFromProtectedFolders: Bool { didSet { defaults.set(logosFromProtectedFolders, forKey: Keys.protectedLogos) } }
-    /// The Projects list's offer to turn `logosFromProtectedFolders` on was closed.
+    /// Read project folders macOS guards (Documents, Desktop, Downloads, cloud and external drives), which asks for
+    /// access the first time: for their logos, and to count a subfolder or worktree toward its repository.
+    /// Folders elsewhere need no permission and are always read.
+    var readProtectedFolders: Bool { didSet { defaults.set(readProtectedFolders, forKey: Keys.protectedFolders) } }
+    /// The Projects list's offer to turn `readProtectedFolders` on was closed.
     var logoHintDismissed: Bool { didSet { defaults.set(logoHintDismissed, forKey: Keys.logoHintDismissed) } }
 
     var launchAtLogin: Bool {
@@ -68,7 +69,7 @@ final class AppSettings {
             Keys.spend: true,
             Keys.menuBarProvider: ProviderID.claude.rawValue,
             Keys.refresh: 5,
-            Keys.protectedLogos: false,
+            Keys.protectedFolders: false,
             Keys.logoHintDismissed: false,
         ]
         for (provider, paths) in installed { registered[Keys.enabled(provider)] = paths.contains(where: fm.fileExists) }
@@ -88,7 +89,7 @@ final class AppSettings {
         showSpend = defaults.bool(forKey: Keys.spend)
         spendView = SpendView(rawValue: defaults.string(forKey: Keys.spendView) ?? "") ?? .ledger
         limitAlert = LimitAlertLevel(rawValue: defaults.string(forKey: Keys.limitAlert) ?? "") ?? .off
-        logosFromProtectedFolders = defaults.bool(forKey: Keys.protectedLogos)
+        readProtectedFolders = defaults.bool(forKey: Keys.protectedFolders)
         logoHintDismissed = defaults.bool(forKey: Keys.logoHintDismissed)
     }
 
@@ -115,7 +116,8 @@ final class AppSettings {
         static let menuBarProvider = "menuBarProvider"
         static let refresh = "refreshMinutes"
         static let limitAlert = "limitAlert"
-        static let protectedLogos = "logosFromProtectedFolders"
+        /// Named for the setting's first use, project logos; kept so the choice carries over.
+        static let protectedFolders = "logosFromProtectedFolders"
         static let logoHintDismissed = "logoHintDismissed"
     }
 }

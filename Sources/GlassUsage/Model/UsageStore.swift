@@ -23,6 +23,7 @@ final class UsageStore {
     init(settings: AppSettings) {
         self.settings = settings
         restoreSnapshots()
+        rescanWhenFolderAccessChanges()
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             // Readings from before the sleep are stale; give the network a moment to come back first.
@@ -32,6 +33,18 @@ final class UsageStore {
 
     func state(for provider: ProviderID) -> ProviderState {
         states[provider] ?? ProviderState()
+    }
+
+    /// Turning on `readProtectedFolders` can merge projects in Documents into their repositories; show that now
+    /// rather than at the next refresh. `scanLocalLogs` rereads the setting, so a change mid-scan isn't lost.
+    private func rescanWhenFolderAccessChanges() {
+        withObservationTracking { _ = settings.readProtectedFolders } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.rescanWhenFolderAccessChanges()
+                await self.scanLocalLogs()
+            }
+        }
     }
 
     /// The provider the menu bar shows: the chosen one while it has a reading, otherwise the first
@@ -119,7 +132,11 @@ final class UsageStore {
         guard !isScanningLogs else { return }
         isScanningLogs = true
         defer { isScanningLogs = false }
-        localReports = await LocalUsageScanner.shared.scan()
+        var readProtected: Bool
+        repeat {
+            readProtected = settings.readProtectedFolders
+            localReports = await LocalUsageScanner.shared.scan(readProtectedFolders: readProtected)
+        } while readProtected != settings.readProtectedFolders
     }
 
     @concurrent

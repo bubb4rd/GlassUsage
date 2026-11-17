@@ -9,7 +9,7 @@ struct ProjectIcon: View {
 
     @Environment(\.appSettings) private var settings
     private var store: ProjectIconStore { .shared }
-    private var mayRead: Bool { settings?.logosFromProtectedFolders == true || !ProjectIcons.isProtected(project.path) }
+    private var mayRead: Bool { settings?.readProtectedFolders == true || !ProjectIcons.isProtected(project.path) }
 
     var body: some View {
         content
@@ -59,7 +59,7 @@ struct ProjectIcon: View {
 }
 
 extension EnvironmentValues {
-    /// The spend rows read and offer to turn on `logosFromProtectedFolders`.
+    /// The spend rows read and offer to turn on `readProtectedFolders`.
     @Entry var appSettings: AppSettings? = nil
 }
 

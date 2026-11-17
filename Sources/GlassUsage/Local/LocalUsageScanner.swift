@@ -37,7 +37,8 @@ actor LocalUsageScanner {
 
     private var cacheDirectory: URL { AppPaths.supportDirectory.appending(path: "local-usage-cache", directoryHint: .isDirectory) }
 
-    func scan(now: Date = .now) async -> [ProviderID: LocalUsageReport] {
+    /// `readProtectedFolders`: whether project folders macOS guards may be read to find their repository.
+    func scan(now: Date = .now, readProtectedFolders: Bool) async -> [ProviderID: LocalUsageReport] {
         if pricing == nil || pricing!.fetchedAt.map({ now.timeIntervalSince($0) > 24 * 3600 }) ?? true {
             pricing = await PricingTable.load()
         }
@@ -65,8 +66,15 @@ actor LocalUsageScanner {
 
         var keys = Set<String>()
         var entries: [UsageEntry] = []
+        // Looked up on every scan rather than cached: repositories and worktrees come and go.
+        var roots: [String: String] = [:]
         for state in files.values {
-            for entry in state.entries where entry.at >= cutoff && keys.insert(entry.key).inserted {
+            for var entry in state.entries where entry.at >= cutoff && keys.insert(entry.key).inserted {
+                if let project = entry.project {
+                    let root = roots[project] ?? ProjectRoots.root(of: project, readProtected: readProtectedFolders)
+                    roots[project] = root
+                    entry.project = root
+                }
                 entries.append(entry)
             }
         }
