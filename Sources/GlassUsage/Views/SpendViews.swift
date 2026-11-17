@@ -91,7 +91,7 @@ private struct SpendLedger: View {
     var body: some View {
         // Dollars, like the headline; tokens only when no model in the chart has a price.
         let byCost = summary.days.contains { $0.cost > 0 }
-        let value: (DaySpend) -> Double = byCost ? { $0.cost } : { Double($0.tokens) }
+        let value: (DaySpend) -> Double = { $0.value(byCost: byCost) }
         let peak = max(summary.days.map(value).max() ?? 0, .leastNonzeroMagnitude)
         let average = summary.days.map(value).reduce(0, +) / Double(max(summary.days.count, 1))
         let spacing: CGFloat = summary.days.count > 14 ? 2 : 4
@@ -247,8 +247,8 @@ private struct HorizontalRule: Shape {
 
 // MARK: Calendar
 
-/// Weeks by weekday, each day shaded by its tokens, with each week's in-range total on the right.
-/// Days outside the range stay gray for context.
+/// Weeks by weekday, each day shaded by its cost, with each week's in-range total on the right. Like the ledger, it
+/// falls back to tokens when nothing charted has a price. Days outside the range stay gray for context.
 private struct SpendCalendar: View {
     let summary: SpendSummary
     let range: SpendRange
@@ -283,12 +283,13 @@ private struct SpendCalendar: View {
 
     var body: some View {
         let weeks = weeks()
-        let peak = max(summary.days.map(\.tokens).max() ?? 0, 1)
+        let byCost = summary.days.contains { $0.cost > 0 }
+        let peak = max(summary.days.map { $0.value(byCost: byCost) }.max() ?? 0, .leastNonzeroMagnitude)
         let cellHeight: CGFloat = weeks.count > 2 ? 14 : 20
-        Revealing { grown in grid(weeks: weeks, peak: peak, cellHeight: cellHeight, grown: grown) }
+        Revealing { grown in grid(weeks: weeks, byCost: byCost, peak: peak, cellHeight: cellHeight, grown: grown) }
     }
 
-    private func grid(weeks: [Week], peak: Int, cellHeight: CGFloat, grown: Bool) -> some View {
+    private func grid(weeks: [Week], byCost: Bool, peak: Double, cellHeight: CGFloat, grown: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 0) {
                 Color.clear.frame(width: Self.labelWidth, height: 1)
@@ -302,10 +303,10 @@ private struct SpendCalendar: View {
             .foregroundStyle(.tertiary)
 
             ForEach(Array(weeks.enumerated()), id: \.element.id) { index, week in
-                weekRow(week, index: index, peak: peak, cellHeight: cellHeight, grown: grown)
+                weekRow(week, index: index, byCost: byCost, peak: peak, cellHeight: cellHeight, grown: grown)
             }
 
-            readout.padding(.top, 2)
+            readout(byCost: byCost).padding(.top, 2)
 
             if !summary.models.isEmpty, !lists.isEmpty {
                 BreakdownRows(summary: summary, breakdown: $breakdown, lists: lists, palette: palette).padding(.top, 8)
@@ -319,7 +320,7 @@ private struct SpendCalendar: View {
     }
 
     /// Cells pop in along a diagonal wave from the first week's first day.
-    private func weekRow(_ week: Week, index: Int, peak: Int, cellHeight: CGFloat, grown: Bool) -> some View {
+    private func weekRow(_ week: Week, index: Int, byCost: Bool, peak: Double, cellHeight: CGFloat, grown: Bool) -> some View {
         HStack(spacing: 0) {
             Text(week.start.formatted(.dateTime.month(.abbreviated).day()))
                 .font(.system(size: 10.5))
@@ -328,7 +329,7 @@ private struct SpendCalendar: View {
                 .frame(width: Self.labelWidth, alignment: .leading)
             HStack(spacing: Self.cellSpacing) {
                 ForEach(Array(week.slots.enumerated()), id: \.offset) { offset, slot in
-                    cell(slot, peak: peak, height: cellHeight)
+                    cell(slot, byCost: byCost, peak: peak, height: cellHeight)
                         .frame(width: Self.cellWidth, height: cellHeight)
                         .scaleEffect(grown || reduceMotion ? 1 : 0.4)
                         .opacity(grown ? 1 : 0)
@@ -341,22 +342,24 @@ private struct SpendCalendar: View {
             if !days.isEmpty {
                 let tokens = days.reduce(0) { $0 + $1.tokens }
                 let cost = days.reduce(0) { $0 + $1.cost }
+                let lead = byCost ? cost > 0 : tokens > 0
+                // The lead figure sits in the cost column, under the model rows' dollars.
                 HStack(spacing: 8) {
-                    Text(Format.tokens(tokens))
-                        .fontWeight(tokens > 0 ? .semibold : .regular)
-                        .frame(width: SpendColumn.tokens, alignment: .trailing)
-                    Text(Format.usd(cost))
+                    Text(byCost ? Format.tokens(tokens) : Format.usd(cost))
                         .foregroundStyle(.secondary)
+                        .frame(width: SpendColumn.tokens, alignment: .trailing)
+                    Text(byCost ? Format.usd(cost) : Format.tokens(tokens))
+                        .fontWeight(lead ? .semibold : .regular)
                         .frame(width: SpendColumn.cost, alignment: .trailing)
                 }
                 .font(.system(size: 11.5))
-                .opacity(tokens > 0 ? 1 : 0.45)
+                .opacity(lead ? 1 : 0.45)
             }
         }
     }
 
     @ViewBuilder
-    private func cell(_ slot: Slot, peak: Int, height: CGFloat) -> some View {
+    private func cell(_ slot: Slot, byCost: Bool, peak: Double, height: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: 4)
         switch slot {
         case .empty:
@@ -364,8 +367,9 @@ private struct SpendCalendar: View {
         case .future:
             shape.strokeBorder(Theme.hair, lineWidth: 0.5)
         case .day(let day):
-            let intensity = day.tokens > 0 ? 0.22 + 0.78 * pow(Double(day.tokens) / Double(peak), 0.7) : 0
-            let segments = day.segments(summary.providers)
+            let value = day.value(byCost: byCost)
+            let intensity = value > 0 ? 0.22 + 0.78 * pow(value / peak, 0.7) : 0
+            let segments = day.segments(summary.providers, byCost: byCost)
             let slit = segments.count > 1 ? palette.slit : 0
             let inner = height - slit * CGFloat(segments.count - 1)
             VStack(spacing: slit) {
@@ -393,16 +397,21 @@ private struct SpendCalendar: View {
         }
     }
 
-    private var readout: some View {
-        Group {
+    private func readout(byCost: Bool) -> some View {
+        // Dollars first, as in the weekly totals; tokens first only when nothing is priced.
+        func amounts(tokens: Int, cost: Double) -> String {
+            byCost ? "\(Format.usd(cost)) · \(Format.tokens(tokens)) tokens" : "\(Format.tokens(tokens)) tokens · \(Format.usd(cost))"
+        }
+        return Group {
             if let day = summary.days.first(where: { $0.id == hovered }) {
-                Text(day.readout).foregroundStyle(.secondary)
+                Text("\(day.dayLabel) · \(amounts(tokens: day.tokens, cost: day.cost))").foregroundStyle(.secondary)
             } else if range == .today {
                 let prior = summary.days.filter { !$0.inRange }
-                Text("Prior \(prior.count) days, in gray · \(Format.tokens(prior.reduce(0) { $0 + $1.tokens })) · "
-                    + Format.usd(prior.reduce(0) { $0 + $1.cost }))
-            } else if let peak = summary.days.filter(\.inRange).max(by: { $0.tokens < $1.tokens }), peak.tokens > 0 {
-                Text("Peak \(peak.dayLabel) · \(Format.tokens(peak.tokens)) · \(Format.usd(peak.cost))")
+                Text("Prior \(prior.count) days, in gray · "
+                    + amounts(tokens: prior.reduce(0) { $0 + $1.tokens }, cost: prior.reduce(0) { $0 + $1.cost }))
+            } else if let peak = summary.days.filter(\.inRange).max(by: { $0.value(byCost: byCost) < $1.value(byCost: byCost) }),
+                      peak.value(byCost: byCost) > 0 {
+                Text("Peak \(peak.dayLabel) · \(amounts(tokens: peak.tokens, cost: peak.cost))")
             } else {
                 Text("No usage \(range.inPhrase) yet")
             }
@@ -725,10 +734,13 @@ private extension DaySpend {
 
     var readout: String { "\(dayLabel) · \(Format.tokens(tokens)) tokens · \(Format.usd(cost))" }
 
+    /// What the charts size and shade a day by: its cost, or its tokens when nothing charted has a price.
+    func value(byCost: Bool) -> Double { byCost ? cost : Double(tokens) }
+
     /// Provider slices with their share of the day's tokens or cost, top of the stack first (providers are in
     /// fixed order, bottom first).
-    func segments(_ providers: [ProviderID], byCost: Bool = false) -> [(provider: ProviderID, share: Double)] {
-        let total = byCost ? cost : Double(tokens)
+    func segments(_ providers: [ProviderID], byCost: Bool) -> [(provider: ProviderID, share: Double)] {
+        let total = value(byCost: byCost)
         guard total > 0 else { return [] }
         return providers.reversed().compactMap { provider in
             let value = byCost ? costByProvider[provider] ?? 0 : Double(tokensByProvider[provider] ?? 0)
