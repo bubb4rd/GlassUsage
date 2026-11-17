@@ -70,6 +70,11 @@ struct SettingsView: View {
                 row("Open on hover") { Toggle("Open on hover", isOn: $settings.openOnHover) }
                 divider
                 row("Launch at login") { Toggle("Launch at login", isOn: $settings.launchAtLogin) }
+                divider
+                row("Logos from Documents & Desktop") {
+                    Toggle("Logos from Documents & Desktop", isOn: $settings.logosFromProtectedFolders)
+                }
+                .help("Show project logos for folders in Documents, Desktop, Downloads, iCloud Drive, cloud storage and external drives. macOS asks for access first.")
                 if updater.isAvailable {
                     divider
                     row("Update automatically") {
@@ -129,6 +134,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("**Limits.** Reads Claude Code's Keychain login and Codex's auth.json, and asks the Antigravity and Muse Code CLIs (`agy -p /usage`, `muse usage`). Tokens are only read, never refreshed or stored.")
             Text("**Spend.** Token spend comes from Claude Code, Codex CLI, Muse Code and omp logs on this Mac, priced with LiteLLM's public list.")
+            Text("**Project logos.** Reads each project folder's app icon, logo or favicon. Folders in Documents, Desktop, Downloads, cloud storage and external drives are only read when you turn that on in Settings.")
         }
         .font(.system(size: 11.5))
         .foregroundStyle(.secondary)

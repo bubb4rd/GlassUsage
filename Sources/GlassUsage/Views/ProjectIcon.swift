@@ -1,18 +1,21 @@
 import SwiftUI
 
 /// A project's own logo when its folder has one; otherwise a letter tile.
-/// "Other" (no folder recorded) and the home folder get neutral symbols.
+/// "Other" (no folder recorded) and the home folder get neutral symbols. Folders macOS guards are only searched
+/// when Settings allows it, so the panel never sets off a permission prompt on its own.
 struct ProjectIcon: View {
     let project: ProjectSpend
     var size: CGFloat = 14
 
+    @Environment(\.logosFromProtectedFolders) private var logosFromProtectedFolders
     private var store: ProjectIconStore { .shared }
+    private var mayRead: Bool { logosFromProtectedFolders || !ProjectIcons.isProtected(project.path) }
 
     var body: some View {
         content
             .frame(width: size, height: size)
             .accessibilityHidden(true)
-            .task(id: project.path) { store.load(project.path) }
+            .task(id: "\(project.path)|\(mayRead)") { if mayRead { store.load(project.path) } }
     }
 
     @ViewBuilder private var content: some View {
@@ -20,7 +23,7 @@ struct ProjectIcon: View {
             symbol("ellipsis")
         } else if project.path == URL.homeDirectory.path {
             symbol("house.fill")
-        } else if let image = store.images[project.path] {
+        } else if mayRead, let image = store.images[project.path] {
             Image(decorative: image, scale: 1)
                 .resizable()
                 .interpolation(.high)
@@ -53,6 +56,11 @@ struct ProjectIcon: View {
         let hash = path.unicodeScalars.reduce(UInt32(2_166_136_261)) { ($0 ^ $1.value) &* 16_777_619 }
         return Color(hue: Double(hash % 360) / 360, saturation: 0.5, brightness: 0.72)
     }
+}
+
+extension EnvironmentValues {
+    /// Mirrors `AppSettings.logosFromProtectedFolders` for the spend rows.
+    @Entry var logosFromProtectedFolders = false
 }
 
 /// Logos found so far, kept for the app's lifetime; each folder is searched once, off the main actor.

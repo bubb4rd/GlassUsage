@@ -86,6 +86,7 @@ struct UsagePanelView: View {
                                  style: settings.spendView, isLoading: store.localReports.isEmpty)
                         // Space, not a rule, sets the spend block apart from the limits.
                         .padding(.top, 24)
+                        .environment(\.logosFromProtectedFolders, settings.logosFromProtectedFolders)
                         .reveal(after: Motion.step * Double(providers.count + 1))
                         .transition(.opacity)
                 }

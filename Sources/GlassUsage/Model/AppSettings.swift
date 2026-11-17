@@ -28,6 +28,9 @@ final class AppSettings {
     var spendView: SpendView { didSet { defaults.set(spendView.rawValue, forKey: Keys.spendView) } }
     /// Notify when a tracked limit reaches this level, and again when that window resets.
     var limitAlert: LimitAlertLevel { didSet { defaults.set(limitAlert.rawValue, forKey: Keys.limitAlert) } }
+    /// Look for project logos in folders macOS guards (Documents, Desktop, Downloads, cloud and external drives),
+    /// which asks for access the first time. Elsewhere logos need no permission and are always looked up.
+    var logosFromProtectedFolders: Bool { didSet { defaults.set(logosFromProtectedFolders, forKey: Keys.protectedLogos) } }
 
     var launchAtLogin: Bool {
         get {
@@ -63,6 +66,7 @@ final class AppSettings {
             Keys.spend: true,
             Keys.menuBarProvider: ProviderID.claude.rawValue,
             Keys.refresh: 5,
+            Keys.protectedLogos: false,
         ]
         for (provider, paths) in installed { registered[Keys.enabled(provider)] = paths.contains(where: fm.fileExists) }
         defaults.register(defaults: registered)
@@ -81,6 +85,7 @@ final class AppSettings {
         showSpend = defaults.bool(forKey: Keys.spend)
         spendView = SpendView(rawValue: defaults.string(forKey: Keys.spendView) ?? "") ?? .ledger
         limitAlert = LimitAlertLevel(rawValue: defaults.string(forKey: Keys.limitAlert) ?? "") ?? .off
+        logosFromProtectedFolders = defaults.bool(forKey: Keys.protectedLogos)
     }
 
     var enabledProviders: [ProviderID] {
@@ -106,6 +111,7 @@ final class AppSettings {
         static let menuBarProvider = "menuBarProvider"
         static let refresh = "refreshMinutes"
         static let limitAlert = "limitAlert"
+        static let protectedLogos = "logosFromProtectedFolders"
     }
 }
 

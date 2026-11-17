@@ -43,6 +43,14 @@ nonisolated enum ProjectIcons {
         return nil
     }
 
+    /// Inside a folder macOS guards with a permission prompt: Documents, Desktop, Downloads, iCloud Drive,
+    /// cloud storage (Dropbox, Google Drive) and external or network volumes.
+    static func isProtected(_ path: String, home: String = URL.homeDirectory.path) -> Bool {
+        let guarded = ["Documents", "Desktop", "Downloads", "Library/Mobile Documents", "Library/CloudStorage"]
+            .map { "\(home)/\($0)" } + ["/Volumes"]
+        return guarded.contains { path == $0 || path.hasPrefix($0 + "/") }
+    }
+
     private static let maxDepth = 3
     /// Caps the walk in large monorepos.
     private static let maxDirectories = 400

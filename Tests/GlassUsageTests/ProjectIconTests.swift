@@ -42,6 +42,17 @@ import Testing
         #expect(candidates(root) == ["favicon.ico", "packages/site/public/favicon.ico"])
     }
 
+    @Test func onlyFoldersMacOSGuardsNeedPermission() {
+        let home = "/Users/me"
+        for path in ["/Users/me/Documents/app", "/Users/me/Desktop", "/Users/me/Library/Mobile Documents/com~apple~CloudDocs/app",
+                     "/Users/me/Library/CloudStorage/Dropbox/app", "/Volumes/Work/app"] {
+            #expect(ProjectIcons.isProtected(path, home: home), "\(path)")
+        }
+        for path in ["/Users/me/Developer/app", "/Users/me/DocumentsArchive/app", "/Users/me", "/opt/work/app"] {
+            #expect(!ProjectIcons.isProtected(path, home: home), "\(path)")
+        }
+    }
+
     @Test func assetCatalogUsesItsLargestAppIcon() throws {
         let root = try project([
             "App/Assets.xcassets/AppIcon.appiconset/16.png",
