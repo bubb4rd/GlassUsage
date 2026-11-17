@@ -38,6 +38,30 @@ struct SettingsView: View {
                         set: { settings.refreshMinutes = $0; store.start() }))
                     Text("min").font(.system(size: 11.5)).foregroundStyle(.tertiary)
                 }
+                stripRow("Alerts") {
+                    PillPicker(options: LimitAlertLevel.allCases.map { ($0, $0.label) }, selection: Binding(
+                        get: { settings.limitAlert },
+                        set: { level in
+                            settings.limitAlert = level
+                            if level != .off { Task { await store.alerts.requestPermission() } }
+                        }))
+                    if settings.limitAlert != .off && store.alerts.isBlocked {
+                        Button { openNotificationSettings() } label: {
+                            Image(systemName: "bell.slash.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.warning)
+                                .frame(width: 22, height: 22)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Notifications are off for GlassUsage. Click to allow them in System Settings.")
+                        .accessibilityLabel("Allow notifications in System Settings")
+                    }
+                }
+                .help("Notify when a tracked limit reaches this level, and again when it resets")
+                .task {
+                    if settings.limitAlert != .off { await store.alerts.refreshPermission() }
+                }
             }
             .padding(.top, 10)
 
@@ -109,6 +133,14 @@ struct SettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
         .frame(width: 272, alignment: .leading)
         .padding(12)
+    }
+
+    /// GlassUsage's page under System Settings › Notifications.
+    private func openNotificationSettings() {
+        let id = Bundle.main.bundleIdentifier ?? ""
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: Strip

@@ -18,6 +18,7 @@ GlassUsage has no account or server of its own. It reads what Claude Code, Codex
 - None of these endpoints or commands is a documented API, and they may change. GlassUsage shows exactly the windows the provider reports and never estimates a limit.
 - Limits refresh on the interval set in Settings, just after a window's reset time, and a few seconds after the Mac wakes. Once a window's reset time has passed, it reads 0% until the next reading arrives.
 - When a usage service rate-limits GlassUsage, it waits as long as the service asks (`Retry-After`, at most an hour), or otherwise 5 minutes, doubling up to an hour, before asking that service again.
+- With *Alerts* on, each window notifies once when it reaches the chosen level and once when that window resets. Windows waiting for their reset alert are saved with the settings, so a relaunch doesn't repeat an alert. Notifications are local; nothing is sent anywhere.
 
 ## Token spend
 

@@ -11,6 +11,8 @@ final class UsageStore {
     private(set) var isScanningLogs = false
 
     let settings: AppSettings
+    /// Near-limit and reset notifications for tracked providers.
+    let alerts = LimitAlerts()
 
     private var loop: Task<Void, Never>?
     /// Providers the usage service rate limited: when to ask again, and how many limits in a row.
@@ -94,6 +96,7 @@ final class UsageStore {
                     state.snapshot = snapshot
                     state.error = nil
                     backoff[provider] = nil
+                    alerts.check(snapshot, level: settings.limitAlert)
                 case .failure(.rateLimited(let until)):
                     // The service's Retry-After when it sends one, else 5, 10, 20… minutes, at most an hour.
                     let strikes = (backoff[provider]?.strikes ?? 0) + 1

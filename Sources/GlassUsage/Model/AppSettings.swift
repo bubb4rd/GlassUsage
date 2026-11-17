@@ -26,6 +26,8 @@ final class AppSettings {
     var showSpend: Bool { didSet { defaults.set(showSpend, forKey: Keys.spend) } }
     /// How the spend block draws the days.
     var spendView: SpendView { didSet { defaults.set(spendView.rawValue, forKey: Keys.spendView) } }
+    /// Notify when a tracked limit reaches this level, and again when that window resets.
+    var limitAlert: LimitAlertLevel { didSet { defaults.set(limitAlert.rawValue, forKey: Keys.limitAlert) } }
 
     var launchAtLogin: Bool {
         get {
@@ -78,6 +80,7 @@ final class AppSettings {
         refreshMinutes = defaults.integer(forKey: Keys.refresh)
         showSpend = defaults.bool(forKey: Keys.spend)
         spendView = SpendView(rawValue: defaults.string(forKey: Keys.spendView) ?? "") ?? .ledger
+        limitAlert = LimitAlertLevel(rawValue: defaults.string(forKey: Keys.limitAlert) ?? "") ?? .off
     }
 
     var enabledProviders: [ProviderID] {
@@ -102,7 +105,16 @@ final class AppSettings {
         static let spendView = "spendView"
         static let menuBarProvider = "menuBarProvider"
         static let refresh = "refreshMinutes"
+        static let limitAlert = "limitAlert"
     }
+}
+
+/// The share of a limit that triggers a notification, at the ring color bands, or no notifications.
+enum LimitAlertLevel: String, CaseIterable {
+    case off, half = "50", threeQuarters = "75", nearlyFull = "90"
+
+    var threshold: Double? { Double(rawValue) }
+    var label: String { threshold.map { "\(Int($0))%" } ?? "Off" }
 }
 
 /// Ledger: one bar per day. Calendar: weeks by weekday, shaded by tokens, with weekly totals.
