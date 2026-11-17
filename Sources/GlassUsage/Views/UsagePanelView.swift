@@ -139,14 +139,13 @@ private struct ProviderLimits: View {
             }
 
             if let snapshot {
-                // Rings spread so the first starts at the leading edge and the last ends at the trailing one. Keyed
-                // by window length across all groups, so a ring keeps its place (and animates) when the group changes.
+                // Rings spread so the first starts at the leading edge and the last ends at the trailing one; a group
+                // with a single window (Antigravity's Argon) starts at the leading edge too. Keyed by window length,
+                // so a ring animates to its new place when the group changes.
                 HStack(spacing: 0) {
-                    ForEach(Array(columns(snapshot).enumerated()), id: \.element) { index, key in
+                    ForEach(Array(shownWindows(snapshot, group: group).enumerated()), id: \.element.key) { index, window in
                         if index > 0 { Spacer(minLength: 12) }
-                        if let window = snapshot.windows.first(where: { $0.group == group && $0.key == key }) {
-                            LimitRing(window: window, now: now)
-                        }
+                        LimitRing(window: window, now: now)
                     }
                 }
             } else if state.error == nil {
@@ -173,10 +172,9 @@ private struct ProviderLimits: View {
         return snapshot.mostConstrained?.group ?? groups[0]
     }
 
-    /// Window keys across all groups, shortest first ("session", "weekly").
-    private func columns(_ snapshot: ProviderSnapshot) -> [String] {
-        var seen = Set<String>()
-        return snapshot.windows.sorted { $0.duration < $1.duration }.map(\.key).filter { seen.insert($0).inserted }
+    /// The shown group's windows (or all of them when windows are account-wide), shortest first.
+    private func shownWindows(_ snapshot: ProviderSnapshot, group: String?) -> [UsageWindow] {
+        snapshot.windows.filter { $0.group == group }.sorted { $0.duration < $1.duration }
     }
 }
 
