@@ -47,12 +47,17 @@ struct UsagePanelView: View {
                     ProviderTitle(provider: first, state: store.state(for: first), now: now)
                 }
                 Spacer()
-                Text(store.isRefreshing ? "refreshing" : Format.ago(store.lastRefresh, now: now))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-                    .help(store.lastRefresh.map { "Last refreshed \(Format.clock($0, now: now))" } ?? "")
-                IconButton(symbol: "arrow.clockwise", help: "Refresh (⌘R)", spinning: store.isRefreshing) {
+                // Only once the reading is as old as the menu bar glyph's dimming; the spinning button covers refreshes.
+                if !store.isRefreshing, store.lastRefresh.map({ now.timeIntervalSince($0) > StatusIcon.staleAfter }) ?? true {
+                    Text(Format.ago(store.lastRefresh, now: now))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                        .help(store.lastRefresh.map { "Last refreshed \(Format.clock($0, now: now))" } ?? "")
+                }
+                IconButton(symbol: "arrow.clockwise",
+                           help: "Refresh (⌘R)" + (store.lastRefresh.map { ". Last refreshed \(Format.clock($0, now: now))" } ?? ""),
+                           spinning: store.isRefreshing) {
                     Task { await store.refresh() }
                 }
                 .disabled(store.isRefreshing)
