@@ -84,21 +84,12 @@ struct UsagePanelView: View {
                 if settings.showSpend {
                     SpendSection(summary: summary, range: $model.range, breakdown: $model.breakdown,
                                  style: settings.spendView, isLoading: store.localReports.isEmpty)
-                        .blockDivider()
+                        // Space, not a rule, sets the spend block apart from the limits.
+                        .padding(.top, 24)
                         .reveal(after: Motion.step * Double(providers.count + 1))
                         .transition(.opacity)
                 }
             }
-        }
-    }
-}
-
-private extension View {
-    /// TokenHell separates blocks with a hairline rule rather than cards.
-    func blockDivider() -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Rectangle().fill(Theme.hair).frame(height: 0.5).padding(.top, 12)
-            self.padding(.top, 12)
         }
     }
 }
@@ -113,7 +104,6 @@ struct LimitsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(providers.enumerated()), id: \.element) { index, provider in
-                if index > 0 { Rectangle().fill(Theme.hair).frame(height: 0.5).reveal(after: Motion.step * Double(index + 1)) }
                 // The first provider's title sits in the panel header.
                 ProviderLimits(provider: provider, state: store.state(for: provider), now: now, showsTitle: index > 0)
                     .reveal(after: Motion.step * Double(index + 1))

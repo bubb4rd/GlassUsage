@@ -270,8 +270,7 @@ private struct SpendCalendar: View {
             readout.padding(.top, 2)
 
             if !summary.models.isEmpty {
-                Rectangle().fill(Theme.hair).frame(height: 0.5).padding(.top, 5).padding(.bottom, 3)
-                BreakdownRows(summary: summary, breakdown: $breakdown)
+                BreakdownRows(summary: summary, breakdown: $breakdown).padding(.top, 8)
             }
             if summary.tokens.total > 0 {
                 chips.padding(.top, 7)
