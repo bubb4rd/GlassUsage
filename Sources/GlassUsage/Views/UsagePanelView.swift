@@ -44,7 +44,7 @@ struct UsagePanelView: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 if let first = providers.first {
-                    ProviderTitle(provider: first, state: store.state(for: first))
+                    ProviderTitle(provider: first, state: store.state(for: first), now: now)
                 }
                 Spacer()
                 Text(store.isRefreshing ? "refreshing" : Format.ago(store.lastRefresh, now: now))
@@ -71,6 +71,8 @@ struct UsagePanelView: View {
             }
             .frame(height: 28)
             .reveal(after: 0)
+            // Above the limits below it, which the title's warning card rolls out over.
+            .zIndex(1)
 
             if providers.isEmpty {
                 Text("Turn on a provider in Settings.")
@@ -135,12 +137,13 @@ private struct ProviderLimits: View {
         VStack(alignment: .leading, spacing: 0) {
             if showsTitle || group != nil {
                 HStack(spacing: 7) {
-                    if showsTitle { ProviderTitle(provider: provider, state: state) }
+                    if showsTitle { ProviderTitle(provider: provider, state: state, now: now) }
                     if let snapshot, let group {
                         GroupPicker(groups: snapshot.groups, selected: group) { pickedGroup = $0 }
                     }
                 }
                 .padding(.bottom, showsTitle ? 6 : 8)
+                .zIndex(1)
             }
 
             if let snapshot {
@@ -156,13 +159,13 @@ private struct ProviderLimits: View {
             } else if state.error == nil {
                 Text("Checking…").font(.system(size: 11)).foregroundStyle(.tertiary)
             }
-            if let error = state.error {
+            // With a reading on screen the error waits behind the title's warning glyph; without one it's all there is.
+            if snapshot == nil, let error = state.error {
                 Text("⚠︎ \(error.isNotConnected ? provider.signInHint : error.errorDescription ?? "")")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .padding(.top, 3)
-                    .help(state.snapshot.map { "Showing the reading from \(Format.ago($0.fetchedAt, now: now))" } ?? "")
             }
         }
         .padding(.top, showsTitle ? 9 : 6)
@@ -183,10 +186,14 @@ private struct ProviderLimits: View {
     }
 }
 
-/// Logo, name and plan.
+/// Logo, name and plan, and a warning glyph while the reading shown is older than a failed refresh.
 private struct ProviderTitle: View {
     let provider: ProviderID
     let state: ProviderState
+    let now: Date
+
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 7) {
@@ -198,7 +205,51 @@ private struct ProviderTitle: View {
                     .foregroundStyle(.secondary)
                     .fixedSize()
             }
+            if let error = state.error, state.snapshot != nil {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.warning)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+                    .onHover { hovering = $0 }
+                    .onDisappear { hovering = false }
+                    .accessibilityLabel("Warning: \(error.errorDescription ?? "")")
+            }
         }
+        // Rolls down over the rings from under the title, which starts at the panel's leading edge.
+        .overlay(alignment: .topLeading) {
+            if hovering, let error = state.error, let snapshot = state.snapshot {
+                WarningCard(message: error.errorDescription ?? "",
+                            detail: "Showing the reading from \(Format.ago(snapshot.fetchedAt, now: now)).")
+                    .offset(y: 24)
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.92, anchor: .top).combined(with: .opacity))
+            }
+        }
+        .animation(Motion.curve(hovering, Motion.enter, delay: 0), value: hovering)
+    }
+}
+
+/// A provider's error, unrolled from its title's warning glyph.
+private struct WarningCard: View {
+    let message: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(message).font(.system(size: 11.5))
+            Text(detail).font(.system(size: 10.5)).foregroundStyle(.secondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(width: UsagePanelView.width - 32, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.97))
+                .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+        }
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.warning.opacity(0.35), lineWidth: 0.5))
+        .allowsHitTesting(false)
     }
 }
 
