@@ -102,6 +102,18 @@ import Testing
         #expect(price.output == 3.75 / 1e6)
     }
 
+    @Test func geminiFourPricesFromItsProviderPrefixedCatalogEntry() throws {
+        let table = try PricingTable.parseCatalog(Data("""
+        {"gemini/gemini-4-hydrogen": {"input_cost_per_token": 1.5e-6, "output_cost_per_token": 7.5e-6},
+         "gemini-3.8-flash": {"input_cost_per_token": 7.5e-7, "output_cost_per_token": 3.75e-6},
+         "gemini/gemini-3.8-flash": {"input_cost_per_token": 9e-7, "output_cost_per_token": 9e-6},
+         "github_copilot/gemini-4-carbon": {"input_cost_per_token": 2e-6, "output_cost_per_token": 1e-5}}
+        """.utf8))
+        #expect(table.price(for: "gemini-4-hydrogen")?.output == 7.5e-6)
+        #expect(table.price(for: "gemini-3.8-flash")?.output == 3.75e-6, "the bare entry wins over the prefixed one")
+        #expect(table.prices["gemini-4-carbon"] == nil, "resellers' copies are skipped")
+    }
+
     @Test func museAllowanceMapsToSessionAndWeek() throws {
         let snapshot = try MuseProvider.parseUsage(try json("""
         {"schema": 1, "allowance": {"tier": "Muse Code Power Usage",

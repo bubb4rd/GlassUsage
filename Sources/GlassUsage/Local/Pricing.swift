@@ -62,26 +62,38 @@ nonisolated struct PricingTable: Codable, Sendable {
 
     private static func fetchCatalog() async throws -> PricingTable {
         let (data, response) = try await HTTP.session.data(from: catalogURL)
-        guard (response as? HTTPURLResponse)?.statusCode == 200,
-              let catalog = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return try parseCatalog(data)
+    }
+
+    /// Providers whose newer models LiteLLM lists only under their prefix: Muse as "meta/muse-…",
+    /// Gemini 4 as "gemini/gemini-4-…".
+    private static let prefixedFamilies = ["meta/muse-", "gemini/gemini-"]
+
+    static func parseCatalog(_ data: Data) throws -> PricingTable {
+        guard let catalog = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw URLError(.badServerResponse)
         }
         var prices: [String: ModelPrice] = [:]
+        var prefixed: [String: ModelPrice] = [:]
         for (key, value) in catalog {
-            // Only the families local agent logs contain. Bare ids only (no "bedrock/…" variants), except
-            // Muse models, which LiteLLM lists only as "meta/muse-…".
+            // Only the families local agent logs contain. Bare ids, plus the provider-prefixed families above;
+            // other prefixes are resellers' copies ("bedrock/…", "github_copilot/…").
             var id = key.lowercased()
-            if id.hasPrefix("meta/muse-") { id.removeFirst("meta/".count) }
+            let family = prefixedFamilies.first { id.hasPrefix($0) }
+            if family != nil { id = String(id.drop { $0 != "/" }.dropFirst()) }
             guard !id.contains("/"),
                   ["claude-", "gpt-", "codex", "o3", "o4", "muse-", "gemini-"].contains(where: id.hasPrefix),
                   let entry = value as? [String: Any],
                   let input = entry["input_cost_per_token"] as? Double,
                   let output = entry["output_cost_per_token"] as? Double else { continue }
-            prices[id] = ModelPrice(input: input, output: output,
-                                    cacheRead: entry["cache_read_input_token_cost"] as? Double,
-                                    cacheWrite: entry["cache_creation_input_token_cost"] as? Double,
-                                    cacheWrite1h: entry["cache_creation_input_token_cost_above_1hr"] as? Double)
+            let price = ModelPrice(input: input, output: output,
+                                   cacheRead: entry["cache_read_input_token_cost"] as? Double,
+                                   cacheWrite: entry["cache_creation_input_token_cost"] as? Double,
+                                   cacheWrite1h: entry["cache_creation_input_token_cost_above_1hr"] as? Double)
+            if family == nil { prices[id] = price } else { prefixed[id] = price }
         }
+        prices.merge(prefixed) { bare, _ in bare }
         guard !prices.isEmpty else { throw URLError(.cannotParseResponse) }
         return PricingTable(prices: prices, fetchedAt: .now)
     }
@@ -116,6 +128,9 @@ nonisolated struct PricingTable: Codable, Sendable {
             "muse-wonder-1.0": p(4, 20, 0.2, 4, 4),
             "muse-ember-1.0": p(0.1, 0.5, 0.004, 0.1, 0.1),
             // Google bills context caching by storage time, not per written token, so writes bill as input.
+            "gemini-4-hydrogen": p(1.5, 7.5, 0.075, 1.5, 1.5),
+            "gemini-4-argon": p(2, 10, 0.1, 2, 2),
+            "gemini-4-carbon": p(2, 10, 0.1, 2, 2),
             "gemini-3.8-flash": p(0.75, 3.75, 0.075, 0.75, 0.75),
         ], fetchedAt: nil)
     }()
