@@ -6,7 +6,6 @@
 
 <p align="center">
   <a href="https://github.com/bubb4rd/GlassUsage/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/bubb4rd/GlassUsage?label=Version&color=4a7fd4"></a>
-  <a href="https://github.com/bubb4rd/GlassUsage/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/bubb4rd/GlassUsage/total?label=Downloads&color=2193d9"></a>
   <img alt="macOS 26+" src="https://img.shields.io/badge/macOS-26%2B-000?logo=apple">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-fad318"></a>
 </p>
