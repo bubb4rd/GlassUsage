@@ -275,12 +275,17 @@ private struct LimitRing: View {
     let delay: Double
 
     @State private var hovering = false
+    /// Counts hovers, each redrawing the pace arc out from the fill.
+    @State private var paceDraws = 0
     @Environment(\.revealDelay) private var base
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Revealing { swept in ring(swept: swept || reduceMotion) }
-            .onHover { hovering = $0 }
+            .onHover { inside in
+                hovering = inside
+                if inside, !reduceMotion { paceDraws += 1 }
+            }
     }
 
     @ViewBuilder
@@ -299,12 +304,18 @@ private struct LimitRing: View {
             ZStack {
                 Circle().stroke(Theme.track, lineWidth: 7)
                 if let ghost {
-                    Circle()
-                        .trim(from: 0, to: swept ? ghost : 0)
-                        .stroke(band.color.opacity(0.3), style: StrokeStyle(lineWidth: 7, lineCap: ghost < 1 ? .round : .butt))
-                        .rotationEffect(.degrees(-90))
-                        .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: ghost)
-                        .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
+                    // On hover the arc collapses into the fill and sweeps back out to the projection, as rings sweep in.
+                    KeyframeAnimator(initialValue: 1.0, trigger: paceDraws) { drawn in
+                        Circle()
+                            .trim(from: 0, to: swept ? window.fraction + (ghost - window.fraction) * drawn : 0)
+                            .stroke(band.color.opacity(0.3), style: StrokeStyle(lineWidth: 7, lineCap: ghost < 1 ? .round : .butt))
+                            .rotationEffect(.degrees(-90))
+                    } keyframes: { _ in
+                        MoveKeyframe(0)
+                        LinearKeyframe(1, duration: Motion.drawDuration, timingCurve: Motion.drawCurve)
+                    }
+                    .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: ghost)
+                    .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
                 }
                 Circle()
                     .trim(from: 0, to: max(swept ? window.fraction : 0, 0.01))
@@ -328,13 +339,11 @@ private struct LimitRing: View {
             // Both texts always take their space, so the column keeps the wider one's width and the ring, spaced
             // from its neighbor by a Spacer, stays put when hovering swaps them.
             ZStack(alignment: .leading) {
-                resetText(nearLimit: usage == .critical)
-                    .opacity(showsPace ? 0 : 1)
+                resetText(nearLimit: usage == .critical, shown: !showsPace)
                 if let pace {
-                    paceText(pace).opacity(showsPace ? 1 : 0)
+                    paceText(pace, shown: showsPace)
                 }
             }
-            .animation(.easeOut(duration: 0.12), value: showsPace)
         }
         .monospacedDigit()
         .accessibilityElement(children: .ignore)
@@ -344,7 +353,7 @@ private struct LimitRing: View {
     }
 
     /// At rest: the window, the time until it resets and the reset time.
-    private func resetText(nearLimit: Bool) -> some View {
+    private func resetText(nearLimit: Bool, shown: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
                 Text(window.shortLabel).foregroundStyle(.secondary)
@@ -353,9 +362,11 @@ private struct LimitRing: View {
                 }
             }
             .font(.system(size: 12))
+            .swapLine(0, shown: shown)
             if let reset = window.resetsAt {
                 Text(Format.until(reset, now: now))
                     .font(.system(size: 15.5, weight: .semibold))
+                    .swapLine(1, shown: shown)
                 // The full tag when the column has room, else a shorter one; the tooltip always has it all.
                 ViewThatFits(in: .horizontal) {
                     Text(Format.clock(reset, now: now))
@@ -365,12 +376,13 @@ private struct LimitRing: View {
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
                 .help(Format.clock(reset, now: now))
+                .swapLine(2, shown: shown)
             }
         }
     }
 
     /// On hover: when the window hits its limit at this pace, or where it ends by the reset.
-    private func paceText(_ pace: Pace) -> some View {
+    private func paceText(_ pace: Pace, shown: Bool) -> some View {
         // `compact` stands in for `small` when the column is too narrow for it, as the reset tag does.
         let (big, small, compact): (String, String, String) = switch pace {
         case .early: ("—", "too early to tell", "too early to tell")
@@ -380,7 +392,9 @@ private struct LimitRing: View {
         }
         return VStack(alignment: .leading, spacing: 3) {
             Text("at this pace").font(.system(size: 12)).foregroundStyle(.secondary)
+                .swapLine(0, shown: shown)
             Text(big).font(.system(size: 15.5, weight: .semibold))
+                .swapLine(1, shown: shown)
             ViewThatFits(in: .horizontal) {
                 Text(small)
                 Text(compact)
@@ -388,6 +402,7 @@ private struct LimitRing: View {
             .font(.system(size: 11))
             .foregroundStyle(.tertiary)
             .help(small)
+            .swapLine(2, shown: shown)
         }
         .lineLimit(1)
     }

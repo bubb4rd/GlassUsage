@@ -13,7 +13,10 @@ enum Motion {
     /// Blocks drop into place with a hint of overshoot.
     static let enter = Animation.spring(duration: 0.4, bounce: 0.18)
     /// Rings sweep and bars grow along a long ease-out.
-    static let draw = Animation.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.6)
+    static let draw = Animation.timingCurve(drawCurve, duration: drawDuration)
+    /// `draw`'s curve and length, for keyframed sweeps.
+    static let drawCurve = UnitCurve.bezier(startControlPoint: UnitPoint(x: 0.2, y: 0.8), endControlPoint: UnitPoint(x: 0.2, y: 1))
+    static let drawDuration = 0.6
     /// Everything folds at once on close, inside the window's fade.
     static let exit = Animation.easeIn(duration: 0.14)
     /// Gap between successive blocks.
@@ -47,6 +50,27 @@ struct Revealing<Content: View>: View {
 extension View {
     /// Fades the block in, dropping into place, `delay` after the enclosing block starts; it fades out on close.
     func reveal(after delay: Double) -> some View { modifier(Reveal(delay: delay)) }
+}
+
+extension View {
+    /// One line of two texts that trade places: the leaving one lifts away as a block does on close, the
+    /// arriving one drops in line by line, as blocks do when the panel opens. Reduce Motion: fades only.
+    func swapLine(_ line: Int, shown: Bool) -> some View { modifier(SwapLine(line: line, shown: shown)) }
+}
+
+private struct SwapLine: ViewModifier {
+    let line: Int
+    let shown: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown || reduceMotion ? 0 : -6)
+            // Arriving lines wait for the leaving ones to clear.
+            .animation(Motion.curve(shown, Motion.enter, delay: 0.08 + Motion.step * Double(line)), value: shown)
+    }
 }
 
 private struct Reveal: ViewModifier {
