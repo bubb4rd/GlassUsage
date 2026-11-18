@@ -55,9 +55,11 @@ import Testing
         #expect(window(61, resets: nil, duration: Self.week).pace(at: now) == nil, "no reset time, nothing to project")
     }
 
-    @MainActor @Test func ringTakesTheWorseOfUsageAndPace() {
-        #expect(Theme.Band(window: window(47, resets: Self.date(23, 6, 30), duration: Self.week), now: now) == .critical,
-                "out for over a quarter of the week")
+    @MainActor @Test func paceWarmsTheRingAtMostOneStepPastItsUsage() {
+        #expect(Theme.Band(window: window(47, resets: Self.date(23, 6, 30), duration: Self.week), now: now) == .warning,
+                "out for over a quarter of the week, but 47% used reads yellow, not red")
+        #expect(Theme.Band(window: window(80, resets: Self.date(23, 6, 30), duration: Self.week), now: now) == .critical,
+                "80% used and out for days goes red")
         #expect(Theme.Band(window: window(61, resets: Self.date(20, 14, 0), duration: Self.week), now: now) == .serious,
                 "out for under a quarter of the week")
         #expect(Theme.Band(window: window(92, resets: Self.date(17, 9, 51), duration: Self.session), now: now) == .critical,

@@ -49,14 +49,26 @@ enum Theme {
         }
 
         /// The worse of how much is used and where the pace leads: close to the limit by the reset is a warning,
-        /// running out before it serious, and out for over a quarter of the window critical.
+        /// running out before it serious, and out for over a quarter of the window critical. Pace warms the ring at
+        /// most one step past its usage: early in a window one busy day projects a long lockout, and a ring at 36%
+        /// shouldn't read red. The pace arc and its hover text tell the rest.
         init(window: UsageWindow, now: Date) {
+            let usage = Band(percent: window.percent)
             let pace: Band = switch window.pace(at: now) {
             case .onPace(let projected) where projected > 0.9: .warning
             case .runsOut(_, let lockout): lockout > 0.25 * window.duration ? .critical : .serious
             default: .good
             }
-            self = max(Band(percent: window.percent), pace)
+            self = max(usage, min(pace, usage.next))
+        }
+
+        /// One step warmer, stopping at critical.
+        private var next: Band {
+            switch self {
+            case .good: .warning
+            case .warning: .serious
+            case .serious, .critical: .critical
+            }
         }
 
         var color: Color {
