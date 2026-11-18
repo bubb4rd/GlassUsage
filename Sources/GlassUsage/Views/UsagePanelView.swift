@@ -24,6 +24,7 @@ struct UsagePanelView: View {
             .transition(.opacity)
         }
         .environment(\.panelRevealed, model.revealed)
+        .environment(\.chartFill, store.settings.chartFill)
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 14)
@@ -277,6 +278,7 @@ private struct LimitRing: View {
     @State private var paceDraws = 0
     @Environment(\.revealDelay) private var base
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.chartFill) private var fill
 
     var body: some View {
         Revealing { swept in ring(swept: swept || reduceMotion) }
@@ -300,27 +302,42 @@ private struct LimitRing: View {
         let showsPace = hovering && pace != nil
         HStack(spacing: 11) {
             ZStack {
-                Circle().stroke(Theme.track, lineWidth: 7)
-                if let ghost {
-                    // On hover the arc collapses into the fill and sweeps back out to the projection, as rings sweep in.
+                if fill == .dither {
+                    // The pace projection sweeps out on hover as the solid arc does, as a sparse dither past the fill.
                     KeyframeAnimator(initialValue: 1.0, trigger: paceDraws) { drawn in
-                        Circle()
-                            .trim(from: 0, to: swept ? window.fraction + (ghost - window.fraction) * drawn : 0)
-                            .stroke(band.color.opacity(0.3), style: StrokeStyle(lineWidth: 7, lineCap: ghost < 1 ? .round : .butt))
-                            .rotationEffect(.degrees(-90))
+                        DitherRing(fill: swept ? window.fraction : 0,
+                                   ghost: ghost.map { swept ? window.fraction + ($0 - window.fraction) * drawn : 0 } ?? 0,
+                                   target: window.fraction, color: band.color)
                     } keyframes: { _ in
                         MoveKeyframe(0)
                         LinearKeyframe(1, duration: Motion.drawDuration, timingCurve: Motion.drawCurve)
                     }
+                    .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: window.fraction)
                     .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: ghost)
                     .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
+                } else {
+                    Circle().stroke(Theme.track, lineWidth: 7)
+                    if let ghost {
+                        // On hover the arc collapses into the fill and sweeps back out to the projection, as rings sweep in.
+                        KeyframeAnimator(initialValue: 1.0, trigger: paceDraws) { drawn in
+                            Circle()
+                                .trim(from: 0, to: swept ? window.fraction + (ghost - window.fraction) * drawn : 0)
+                                .stroke(band.color.opacity(0.3), style: StrokeStyle(lineWidth: 7, lineCap: ghost < 1 ? .round : .butt))
+                                .rotationEffect(.degrees(-90))
+                        } keyframes: { _ in
+                            MoveKeyframe(0)
+                            LinearKeyframe(1, duration: Motion.drawDuration, timingCurve: Motion.drawCurve)
+                        }
+                        .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: ghost)
+                        .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
+                    }
+                    Circle()
+                        .trim(from: 0, to: max(swept ? window.fraction : 0, 0.01))
+                        .stroke(band.color, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: window.fraction)
+                        .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
                 }
-                Circle()
-                    .trim(from: 0, to: max(swept ? window.fraction : 0, 0.01))
-                    .stroke(band.color, style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: window.fraction)
-                    .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text("\(Int(window.percent.rounded()))")
                         .font(.system(size: 18, weight: .semibold))

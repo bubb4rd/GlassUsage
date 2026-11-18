@@ -63,7 +63,12 @@ struct SettingsView: View {
                             swatch($0)
                         }
                     }
-                    .help("How the spend charts tell providers apart: gray steps, or each provider's color")
+                    .help("How the spend charts tell providers apart: gray steps, each provider's brand color, or neon")
+                    divider
+                    row("Fill") {
+                        PillPicker(options: ChartFill.allCases.map { ($0, $0.label) }, selection: $settings.chartFill)
+                    }
+                    .help("Solid fills, or a dot-matrix dither on the limit rings, spend bar, day chart and list bars")
                     divider
                     row("Lists") {
                         HStack(spacing: 5) { ForEach(SpendBreakdown.allCases, id: \.self) { listChip($0) } }

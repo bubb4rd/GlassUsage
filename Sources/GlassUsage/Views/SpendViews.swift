@@ -12,6 +12,10 @@ struct SpendSection: View {
     let lists: [SpendBreakdown]
     let isLoading: Bool
 
+    @Environment(\.chartFill) private var fill
+    @Environment(\.panelRevealed) private var revealed
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
@@ -22,7 +26,16 @@ struct SpendSection: View {
             .frame(height: 26)
 
             if isLoading {
-                ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 64)
+                if fill == .dither {
+                    TimelineView(.animation(minimumInterval: 1 / 30, paused: !revealed || reduceMotion)) { timeline in
+                        DitherScan(t: Dither.time(timeline.date), scanning: revealed && !reduceMotion)
+                    }
+                    .frame(height: ProviderShare.ditherHeight)
+                    .padding(.top, 10)
+                    .accessibilityLabel("Reading usage logs")
+                } else {
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 64)
+                }
             } else if !summary.hasChartUsage {
                 Text("Token counts from Claude Code, Codex CLI, Muse Code and omp logs show up here after your first session.")
                     .font(.system(size: 11.5))
@@ -31,6 +44,9 @@ struct SpendSection: View {
                     .padding(.top, 6)
             } else {
                 let palette = SpendPalette(style: colors, providers: summary.providers)
+                if summary.providers.count > 1 {
+                    ProviderShare(summary: summary, palette: palette).padding(.top, 10)
+                }
                 switch style {
                 case .ledger: SpendLedger(summary: summary, range: range, breakdown: $breakdown, lists: lists, palette: palette)
                 case .calendar: SpendCalendar(summary: summary, range: range, breakdown: $breakdown, lists: lists, palette: palette)
@@ -102,11 +118,12 @@ private struct SpendLedger: View {
         VStack(alignment: .leading, spacing: 0) {
             let amount: (Double) -> String = byCost ? Format.dollars : { Format.tokens(Int($0)) }
             let full = "avg \(amount(average))/day · peak \(amount(peak))"
-            // With many providers the key takes the room: then only the average, then only the key.
-            ViewThatFits(in: .horizontal) {
-                keyRow(averageLabel: full)
-                keyRow(averageLabel: "avg \(amount(average))")
-                keyRow(averageLabel: nil)
+            HStack(spacing: 5) {
+                HorizontalRule()
+                    .stroke(Color.primary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                    .frame(width: 12, height: 1)
+                Text(full)
+                Spacer(minLength: 0)
             }
             .help((summary.days.count > range.dayCount ? "Over the last \(summary.days.count) days: " : "Over the \(range.phrase): ") + full)
             .font(.system(size: 10.5))
@@ -120,7 +137,8 @@ private struct SpendLedger: View {
                     ForEach(Array(summary.days.enumerated()), id: \.element.id) { index, day in
                         DayBar(segments: day.segments(summary.providers, byCost: byCost), palette: palette,
                                height: Self.chartHeight * value(day) / peak,
-                               progress: grown || reduceMotion ? 1 : 0)
+                               progress: grown || reduceMotion ? 1 : 0,
+                               highlighted: hovered.map { $0 == day.id }, seed: index)
                             .animation(Motion.curve(grown, Motion.draw, delay: base + 0.05 + stagger * Double(index)), value: grown)
                             .frame(maxWidth: .infinity, maxHeight: Self.chartHeight, alignment: .bottom)
                             .opacity(day.inRange ? 1 : 0.55)
@@ -173,22 +191,6 @@ private struct SpendLedger: View {
         .monospacedDigit()
     }
 
-    /// The provider key on the left, the dashed average's label on the right.
-    private func keyRow(averageLabel: String?) -> some View {
-        HStack(spacing: 10) {
-            if summary.providers.count > 1 { ProviderLegend(palette: palette) }
-            Spacer(minLength: 0)
-            if let averageLabel {
-                HStack(spacing: 5) {
-                    HorizontalRule()
-                        .stroke(Color.primary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
-                        .frame(width: 12, height: 1)
-                    Text(averageLabel).fixedSize()
-                }
-            }
-        }
-    }
-
     @ViewBuilder
     private func axis(spacing: CGFloat, byCost: Bool) -> some View {
         if let day = summary.days.first(where: { $0.id == hovered }) {
@@ -223,9 +225,18 @@ private struct DayBar: View {
     let height: CGFloat
     /// 0 folds the column to its baseline, 1 draws it at full height.
     let progress: CGFloat
+    /// Nil while no day is hovered; else whether this one is. Dithered columns pick out the hovered day.
+    let highlighted: Bool?
+    /// The column's place in the chart, varying the dither texture.
+    let seed: Int
+
+    @Environment(\.chartFill) private var fill
 
     var body: some View {
-        if height < 1 || segments.isEmpty {
+        if fill == .dither {
+            DitherColumn(slices: segments.reversed().map { (palette.color(for: $0.provider), $0.share) }, height: height,
+                         progress: Double(progress), highlighted: highlighted, seed: seed)
+        } else if height < 1 || segments.isEmpty {
             Capsule().fill(Theme.track).frame(height: 2).opacity(progress)
         } else {
             let slit: CGFloat = segments.count > 1 && height >= CGFloat(segments.count) * 4 ? 1 : 0
@@ -508,8 +519,8 @@ struct SpendPalette {
 
     func color(for provider: ProviderID) -> Color {
         switch style {
-        case .providers:
-            return Theme.color(for: provider)
+        case .providers, .neon:
+            return Theme.color(for: provider, in: style)
         case .graphite:
             let steps = Self.grays[min(max(providers.count, 1), Self.grays.count) - 1]
             return Color.primary.opacity(steps[min(providers.firstIndex(of: provider) ?? 0, steps.count - 1)])
@@ -534,6 +545,7 @@ private struct BreakdownRows: View {
     let palette: SpendPalette
     @Environment(\.appSettings) private var settings
     @Environment(\.panelRevealed) private var revealed
+    @Environment(\.chartFill) private var fill
     /// The row whose name slides to show all of it.
     @State private var hovered: String?
 
@@ -637,11 +649,16 @@ private struct BreakdownRows: View {
                     .frame(width: SpendColumn.lead, alignment: .trailing)
             }
             .frame(height: 21)
-            RoundedRectangle(cornerRadius: 1)
-                .fill(bar)
-                .frame(height: 2)
-                .scaleEffect(x: min(max(fraction, 0), 1), anchor: .leading)
-                .animation(.smooth(duration: 0.3), value: fraction)
+            if fill == .dither {
+                DitherLine(fraction: fraction, color: bar)
+                    .animation(.smooth(duration: 0.3), value: fraction)
+            } else {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(bar)
+                    .frame(height: 2)
+                    .scaleEffect(x: min(max(fraction, 0), 1), anchor: .leading)
+                    .animation(.smooth(duration: 0.3), value: fraction)
+            }
         }
         .font(.system(size: 12.5))
         .frame(height: 26, alignment: .top)
@@ -708,20 +725,128 @@ private struct LogoHint: View {
     }
 }
 
-/// Which fill is which provider: a small swatch before each name, kept on one line.
-private struct ProviderLegend: View {
+/// The range's lead figure by provider: one bar split across the panel, then each provider with its figure.
+/// Hovering a slice or a name picks that provider out in both. The bar sweeps in as the charts grow.
+private struct ProviderShare: View {
+    let summary: SpendSummary
     let palette: SpendPalette
 
+    @State private var hovered: ProviderID?
+    @State private var width: CGFloat = 1
+    @Environment(\.chartFill) private var fill
+    @Environment(\.revealDelay) private var base
+    @Environment(\.panelRevealed) private var revealed
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    static let ditherHeight: CGFloat = 32
+
     var body: some View {
-        HStack(spacing: 10) {
-            ForEach(palette.providers) { provider in
-                HStack(spacing: 4) {
-                    RoundedRectangle(cornerRadius: 2).fill(palette.color(for: provider)).frame(width: 7, height: 7)
-                    Text(provider.displayName)
+        let byCost = summary.leadsWithCost
+        let totals = summary.providers.map { (provider: $0, value: summary.total(for: $0, byCost: byCost)) }
+        let sum = max(totals.reduce(0) { $0 + $1.value }, .leastNonzeroMagnitude)
+        let slices = totals.map { (color: palette.color(for: $0.provider), share: $0.value / sum) }
+        let highlighted = hovered.flatMap { summary.providers.firstIndex(of: $0) }
+        VStack(alignment: .leading, spacing: 6) {
+            Revealing { shown in
+                bar(slices, highlighted: highlighted, progress: shown || reduceMotion ? 1 : 0)
+                    .animation(Motion.curve(shown, Motion.draw, delay: base + 0.05), value: shown)
+            }
+            .frame(height: fill == .dither ? Self.ditherHeight : 8)
+            .contentShape(.rect)
+            .onGeometryChange(for: CGFloat.self, of: \.size.width) { width = max($0, 1) }
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let point):
+                    var edge = 0.0
+                    hovered = totals.indices.first { index in
+                        edge += slices[index].share
+                        return point.x / width < edge
+                    }.map { totals[$0].provider }
+                case .ended:
+                    hovered = nil
+                }
+            }
+            legend(totals, byCost: byCost)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(totals.map { "\($0.provider.displayName) \(figure($0.value, byCost: byCost))" }.joined(separator: ", "))
+    }
+
+    @ViewBuilder
+    private func bar(_ slices: [(color: Color, share: Double)], highlighted: Int?, progress: Double) -> some View {
+        if fill == .dither {
+            // The texture drifts while the panel is open.
+            TimelineView(.animation(minimumInterval: 1 / 12, paused: !revealed || reduceMotion)) { timeline in
+                DitherShareBar(slices: slices, progress: progress, highlighted: highlighted, t: Dither.time(timeline.date),
+                               live: revealed && !reduceMotion)
+            }
+        } else {
+            SolidShareBar(slices: slices, progress: progress, highlighted: highlighted)
+        }
+    }
+
+    /// Two providers to a row, each with its figure at the end.
+    private func legend(_ totals: [(provider: ProviderID, value: Double)], byCost: Bool) -> some View {
+        let rows = stride(from: 0, to: totals.count, by: 2).map { Array(totals[$0..<min($0 + 2, totals.count)]) }
+        return Grid(horizontalSpacing: 12, verticalSpacing: 0) {
+            ForEach(rows.indices, id: \.self) { row in
+                GridRow {
+                    ForEach(rows[row], id: \.provider) { item in
+                        HStack(spacing: 7) {
+                            ProviderLogo(provider: item.provider, size: 12).frame(width: 14)
+                            Text(item.provider.displayName).fontWeight(.medium).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(figure(item.value, byCost: byCost)).foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 6)
+                        .frame(height: 24)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(hovered == item.provider ? Theme.fill1 : .clear))
+                        .opacity(hovered == nil || hovered == item.provider ? 1 : 0.45)
+                        .contentShape(.rect)
+                        .onHover { inside in
+                            if inside { hovered = item.provider } else if hovered == item.provider { hovered = nil }
+                        }
+                    }
+                    if rows[row].count == 1 { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
                 }
             }
         }
-        .fixedSize()
+        .font(.system(size: 12))
+        .monospacedDigit()
+        .padding(.horizontal, -6)
+        .animation(.easeOut(duration: 0.15), value: hovered)
+    }
+
+    private func figure(_ value: Double, byCost: Bool) -> String {
+        byCost ? Format.dollars(value) : Format.tokens(Int(value))
+    }
+}
+
+/// The spend bar in flat color: a capsule split into provider slices that grow in from the leading edge.
+private struct SolidShareBar: View, Animatable {
+    let slices: [(color: Color, share: Double)]
+    var progress: Double
+    let highlighted: Int?
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            var context = context
+            context.clip(to: Capsule().path(in: CGRect(origin: .zero, size: size)))
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.track))
+            var x: CGFloat = 0
+            for (index, slice) in slices.enumerated() {
+                let width = size.width * slice.share * progress
+                let dim = highlighted == nil || highlighted == index ? 1 : 0.35
+                context.fill(Path(CGRect(x: x, y: 0, width: max(width - 1, 0), height: size.height)),
+                             with: .color(slice.color.opacity(dim)))
+                x += width
+            }
+        }
     }
 }
 
@@ -743,6 +868,13 @@ private func mixNote(_ tokens: TokenCounts) -> String {
 
 private extension SpendSummary {
     var hasChartUsage: Bool { days.contains { $0.tokens > 0 } }
+
+    /// A provider's in-range cost, or its tokens.
+    func total(for provider: ProviderID, byCost: Bool) -> Double {
+        days.filter(\.inRange).reduce(0) { sum, day in
+            sum + (byCost ? day.costByProvider[provider] ?? 0 : Double(day.tokensByProvider[provider] ?? 0))
+        }
+    }
 }
 
 private extension SpendRange {

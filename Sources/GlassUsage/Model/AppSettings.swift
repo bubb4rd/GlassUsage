@@ -30,8 +30,10 @@ final class AppSettings {
     var showSpend: Bool { didSet { defaults.set(showSpend, forKey: Keys.spend) } }
     /// How the spend block draws the days.
     var spendView: SpendView { didSet { defaults.set(spendView.rawValue, forKey: Keys.spendView) } }
-    /// Whether the spend charts tell providers apart by gray steps or by each provider's color.
+    /// How the spend charts tell providers apart: gray steps or a color theme.
     var spendColors: SpendColors { didSet { defaults.set(spendColors.rawValue, forKey: Keys.spendColors) } }
+    /// Whether rings, the spend bar, the day chart and list bars are solid or a dot-matrix dither.
+    var chartFill: ChartFill { didSet { defaults.set(chartFill.rawValue, forKey: Keys.chartFill) } }
     /// Whether the spend block leads with dollars at API prices or with tokens, and ranks its lists by it.
     var spendUnit: SpendUnit { didSet { defaults.set(spendUnit.rawValue, forKey: Keys.spendUnit) } }
     /// Which lists the spend block offers under its chart; none hides the list.
@@ -121,6 +123,7 @@ final class AppSettings {
             defaults.set(colors.rawValue, forKey: Keys.spendColors)
         }
         spendColors = colors
+        chartFill = ChartFill(rawValue: defaults.string(forKey: Keys.chartFill) ?? "") ?? .solid
         spendUnit = SpendUnit(rawValue: defaults.string(forKey: Keys.spendUnit) ?? "") ?? .value
         spendLists = Set((defaults.stringArray(forKey: Keys.spendLists) ?? []).compactMap(SpendBreakdown.init))
         limitAlert = LimitAlertLevel(rawValue: defaults.string(forKey: Keys.limitAlert) ?? "") ?? .off
@@ -184,6 +187,7 @@ final class AppSettings {
         static let spend = "showSpend"
         static let spendView = "spendView"
         static let spendColors = "spendColors"
+        static let chartFill = "chartFill"
         static let spendUnit = "spendUnit"
         static let spendLists = "spendLists"
         /// Named for 1.4, where the group picked for the menu bar was also the one the panel opened on.
@@ -224,14 +228,27 @@ enum SpendView: String, CaseIterable {
 }
 
 /// How the spend charts tell providers apart. Graphite: gray steps, so color on the panel only marks limits.
-/// Providers: each provider's identity color.
+/// Providers: each provider's brand color. Neon: brighter colors set further apart, which suit the dither fill.
 enum SpendColors: String, CaseIterable {
-    case graphite, providers
+    case graphite, providers, neon
 
     var label: String {
         switch self {
         case .graphite: "Graphite"
         case .providers: "Providers"
+        case .neon: "Neon"
+        }
+    }
+}
+
+/// Solid: flat fills. Dither: square cells lit in an ordered dither, densest along edges, with a glow in dark mode.
+enum ChartFill: String, CaseIterable {
+    case solid, dither
+
+    var label: String {
+        switch self {
+        case .solid: "Solid"
+        case .dither: "Dither"
         }
     }
 }
