@@ -39,7 +39,8 @@ struct UsagePanelView: View {
     private func main(now: Date) -> some View {
         let settings = store.settings
         let providers = settings.enabledProviders
-        let summary = SpendSummary(reports: providers.compactMap { store.localReports[$0] }, range: model.range)
+        let summary = SpendSummary(reports: providers.compactMap { store.localReports[$0] }, range: model.range,
+                                   unit: settings.spendUnit)
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {

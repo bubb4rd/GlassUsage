@@ -28,6 +28,8 @@ final class AppSettings {
     var spendView: SpendView { didSet { defaults.set(spendView.rawValue, forKey: Keys.spendView) } }
     /// Whether the spend charts tell providers apart by gray steps or by each provider's color.
     var spendColors: SpendColors { didSet { defaults.set(spendColors.rawValue, forKey: Keys.spendColors) } }
+    /// Whether the spend block leads with dollars at API prices or with tokens, and ranks its lists by it.
+    var spendUnit: SpendUnit { didSet { defaults.set(spendUnit.rawValue, forKey: Keys.spendUnit) } }
     /// Which lists the spend block offers under its chart; none hides the list.
     var spendLists: Set<SpendBreakdown> {
         didSet { defaults.set(SpendBreakdown.allCases.filter(spendLists.contains).map(\.rawValue), forKey: Keys.spendLists) }
@@ -105,6 +107,7 @@ final class AppSettings {
             defaults.set(colors.rawValue, forKey: Keys.spendColors)
         }
         spendColors = colors
+        spendUnit = SpendUnit(rawValue: defaults.string(forKey: Keys.spendUnit) ?? "") ?? .value
         spendLists = Set((defaults.stringArray(forKey: Keys.spendLists) ?? []).compactMap(SpendBreakdown.init))
         limitAlert = LimitAlertLevel(rawValue: defaults.string(forKey: Keys.limitAlert) ?? "") ?? .off
         readProtectedFolders = defaults.bool(forKey: Keys.protectedFolders)
@@ -135,6 +138,7 @@ final class AppSettings {
         static let spend = "showSpend"
         static let spendView = "spendView"
         static let spendColors = "spendColors"
+        static let spendUnit = "spendUnit"
         static let spendLists = "spendLists"
         static let menuBarProvider = "menuBarProvider"
         static let refresh = "refreshMinutes"
@@ -153,7 +157,7 @@ enum LimitAlertLevel: String, CaseIterable {
     var label: String { threshold.map { "\(Int($0))%" } ?? "Off" }
 }
 
-/// Ledger: one bar per day. Calendar: weeks by weekday, shaded by tokens, with weekly totals.
+/// Ledger: one bar per day. Calendar: weeks by weekday, shaded by each day's figure, with weekly totals.
 enum SpendView: String, CaseIterable {
     case ledger, calendar
 

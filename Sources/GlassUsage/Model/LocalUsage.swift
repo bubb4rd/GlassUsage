@@ -138,6 +138,14 @@ nonisolated enum SpendBreakdown: String, CaseIterable, Sendable {
     var label: String { switch self { case .models: "Models"; case .projects: "Projects"; case .sources: "Sources" } }
 }
 
+/// What the spend block leads with and ranks by: dollars at API list prices, or tokens.
+nonisolated enum SpendUnit: String, CaseIterable, Sendable {
+    case value, tokens
+
+    var label: String { switch self { case .value: "Value"; case .tokens: "Tokens" } }
+    var symbol: String { switch self { case .value: "dollarsign"; case .tokens: "number" } }
+}
+
 nonisolated struct ModelSpend: Identifiable, Sendable {
     let model: String
     let provider: ProviderID
@@ -177,14 +185,15 @@ nonisolated struct DaySpend: Identifiable, Sendable {
 
 /// Everything the spend sections show for one range, combined across providers.
 nonisolated struct SpendSummary: Sendable {
+    let unit: SpendUnit
     var tokens = TokenCounts()
     var cost: Double = 0
     /// Oldest first; at least a week so "Today" still has context.
     var days: [DaySpend] = []
-    /// Highest cost first, then most tokens (unpriced models cost nothing).
+    /// By the unit, the other figure breaking ties (unpriced models cost nothing).
     var models: [ModelSpend] = []
     /// At most `projectRows`, ranked like `models`, adding up to the range: projects with at least
-    /// `minProjectShare` of its cost (of its tokens when nothing is priced), then Other for the rest.
+    /// `minProjectShare` of the range in the lead figure, then Other for the rest.
     var projects: [ProjectSpend] = []
     /// Tools the range's usage was read from, ranked like `models`.
     var sources: [SourceSpend] = []
@@ -196,7 +205,13 @@ nonisolated struct SpendSummary: Sendable {
     /// Smaller projects fold into Other, so one-off folders don't take a row.
     static let minProjectShare = 0.01
 
-    init(reports: [LocalUsageReport], range: SpendRange) {
+    /// Dollars lead the lists: the unit is value and something in the range has a price.
+    var leadsWithCost: Bool { unit == .value && cost > 0 }
+    /// Dollars size the charts: the unit is value and some charted day has a price, even outside the range.
+    var chartsByCost: Bool { unit == .value && days.contains { $0.cost > 0 } }
+
+    init(reports: [LocalUsageReport], range: SpendRange, unit: SpendUnit) {
+        self.unit = unit
         let chartCount = max(range.dayCount, 7)
         var byDay: [Date: DaySpend] = [:]
         var models: [String: ModelSpend] = [:]
@@ -235,10 +250,10 @@ nonisolated struct SpendSummary: Sendable {
             }
         }
         days = byDay.values.sorted { $0.day < $1.day }
-        self.models = models.values.sorted { Self.ranks($0.cost, $0.tokens, above: $1.cost, $1.tokens) }
-        self.sources = sources.values.sorted { Self.ranks($0.cost, $0.tokens, above: $1.cost, $1.tokens) }
-        let ranked = projects.values.sorted { Self.ranks($0.cost, $0.tokens, above: $1.cost, $1.tokens) }
-        let priced = cost > 0
+        self.models = models.values.sorted { Self.ranks($0.cost, $0.tokens, above: $1.cost, $1.tokens, by: unit) }
+        self.sources = sources.values.sorted { Self.ranks($0.cost, $0.tokens, above: $1.cost, $1.tokens, by: unit) }
+        let ranked = projects.values.sorted { Self.ranks($0.cost, $0.tokens, above: $1.cost, $1.tokens, by: unit) }
+        let priced = leadsWithCost
         let total = tokens.total
         let large = ranked.filter { project in
             !project.path.isEmpty && (priced ? project.cost >= cost * Self.minProjectShare
@@ -260,9 +275,13 @@ nonisolated struct SpendSummary: Sendable {
         self.providers = ProviderID.allCases.filter(providers.contains)
     }
 
-    /// Higher cost first; equal costs (unpriced models cost nothing) by tokens.
-    private static func ranks(_ cost: Double, _ tokens: TokenCounts, above otherCost: Double, _ otherTokens: TokenCounts) -> Bool {
-        cost != otherCost ? cost > otherCost : tokens.total > otherTokens.total
+    /// The unit's figure first, the other breaking ties.
+    private static func ranks(_ cost: Double, _ tokens: TokenCounts, above otherCost: Double, _ otherTokens: TokenCounts,
+                              by unit: SpendUnit) -> Bool {
+        switch unit {
+        case .value: cost != otherCost ? cost > otherCost : tokens.total > otherTokens.total
+        case .tokens: tokens.total != otherTokens.total ? tokens.total > otherTokens.total : cost > otherCost
+        }
     }
 }
 

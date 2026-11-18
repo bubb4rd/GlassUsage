@@ -46,25 +46,27 @@ struct SpendSection: View {
         } else if !summary.hasChartUsage {
             Text("No usage \(range.inPhrase)").font(.system(size: 12.5)).foregroundStyle(.secondary)
         } else {
+            let byValue = summary.unit == .value
             HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(Format.dollars(summary.cost))
+                Text(byValue ? Format.dollars(summary.cost) : Format.tokens(summary.tokens.total))
                     .font(.system(size: 22, weight: .bold))
                     .tracking(-0.5)
-                    .contentTransition(.numericText(value: summary.cost))
-                Text("API VALUE")
+                    .contentTransition(.numericText(value: byValue ? summary.cost : Double(summary.tokens.total)))
+                Text(byValue ? "API VALUE" : "TOKENS")
                     .font(.system(size: 9.5, weight: .semibold))
                     .tracking(0.6)
                     .foregroundStyle(.tertiary)
             }
             .monospacedDigit()
-            .animation(.smooth(duration: 0.3), value: summary.cost)
+            .animation(.smooth(duration: 0.3), value: byValue ? summary.cost : Double(summary.tokens.total))
             .help(costNote)
             .accessibilityElement(children: .combine)
         }
     }
 
     private var costNote: String {
-        var note = "\(Format.usd(summary.cost)): the tokens priced at API list rates (LiteLLM). Subscriptions bill differently."
+        var note = "\(Format.tokens(summary.tokens.total)) tokens, worth \(Format.usd(summary.cost)) at API list rates (LiteLLM). "
+            + "Subscriptions bill differently."
         if !summary.sources.isEmpty { note += " From \(summary.sources.map(\.source.displayName).formatted())." }
         if summary.hasUnpriced { note += " Some models have no list price and count as $0." }
         return note
@@ -89,8 +91,8 @@ private struct SpendLedger: View {
     private static let chartHeight: CGFloat = 52
 
     var body: some View {
-        // Dollars, like the headline; tokens only when no model in the chart has a price.
-        let byCost = summary.days.contains { $0.cost > 0 }
+        // Dollars, like the headline; tokens when they lead, or when no model in the chart has a price.
+        let byCost = summary.chartsByCost
         let value: (DaySpend) -> Double = { $0.value(byCost: byCost) }
         let peak = max(summary.days.map(value).max() ?? 0, .leastNonzeroMagnitude)
         let average = summary.days.map(value).reduce(0, +) / Double(max(summary.days.count, 1))
@@ -127,7 +129,7 @@ private struct SpendLedger: View {
                                 if inside { hovered = day.id } else if hovered == day.id { hovered = nil }
                             }
                             .accessibilityElement()
-                            .accessibilityLabel(day.readout)
+                            .accessibilityLabel(day.readout(byCost: byCost))
                     }
                 }
             }
@@ -141,7 +143,7 @@ private struct SpendLedger: View {
             }
             .padding(.top, 6)
 
-            axis(spacing: spacing)
+            axis(spacing: spacing, byCost: byCost)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .frame(height: 12)
@@ -149,7 +151,11 @@ private struct SpendLedger: View {
 
             Group {
                 if summary.tokens.total > 0 {
-                    Text("\(emphasis(Format.tokens(summary.tokens.total))) tokens · \(emphasis(share(summary.tokens.cacheRead, of: summary.tokens.total))) cache reads · \(emphasis(Format.tokens(summary.tokens.output))) output")
+                    // Whichever figure the headline doesn't show leads the mix.
+                    let total = summary.unit == .tokens && summary.cost > 0
+                        ? "\(emphasis(Format.dollars(summary.cost))) API value"
+                        : "\(emphasis(Format.tokens(summary.tokens.total))) tokens"
+                    Text("\(total) · \(emphasis(share(summary.tokens.cacheRead, of: summary.tokens.total))) cache reads · \(emphasis(Format.tokens(summary.tokens.output))) output")
                         .help(mixNote(summary.tokens))
                 } else {
                     Text("No usage \(range.inPhrase) yet")
@@ -184,9 +190,9 @@ private struct SpendLedger: View {
     }
 
     @ViewBuilder
-    private func axis(spacing: CGFloat) -> some View {
+    private func axis(spacing: CGFloat, byCost: Bool) -> some View {
         if let day = summary.days.first(where: { $0.id == hovered }) {
-            Text(day.readout).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+            Text(day.readout(byCost: byCost)).foregroundStyle(.secondary).frame(maxWidth: .infinity)
         } else if summary.days.count > 7, let first = summary.days.first {
             HStack {
                 Text(first.shortDate)
@@ -247,8 +253,8 @@ private struct HorizontalRule: Shape {
 
 // MARK: Calendar
 
-/// Weeks by weekday, each day shaded by its cost, with each week's in-range total on the right. Like the ledger, it
-/// falls back to tokens when nothing charted has a price. Days outside the range stay gray for context.
+/// Weeks by weekday, each day shaded by its cost (or tokens, as the ledger sizes its bars), with each week's
+/// in-range total on the right. Days outside the range stay gray for context.
 private struct SpendCalendar: View {
     let summary: SpendSummary
     let range: SpendRange
@@ -283,7 +289,7 @@ private struct SpendCalendar: View {
 
     var body: some View {
         let weeks = weeks()
-        let byCost = summary.days.contains { $0.cost > 0 }
+        let byCost = summary.chartsByCost
         let peak = max(summary.days.map { $0.value(byCost: byCost) }.max() ?? 0, .leastNonzeroMagnitude)
         let cellHeight: CGFloat = weeks.count > 2 ? 14 : 20
         Revealing { grown in grid(weeks: weeks, byCost: byCost, peak: peak, cellHeight: cellHeight, grown: grown) }
@@ -343,14 +349,15 @@ private struct SpendCalendar: View {
                 let tokens = days.reduce(0) { $0 + $1.tokens }
                 let cost = days.reduce(0) { $0 + $1.cost }
                 let lead = byCost ? cost > 0 : tokens > 0
-                // The lead figure sits in the cost column, under the model rows' dollars.
+                let figures = SpendText.figures(tokens: tokens, cost: cost, byCost: byCost)
+                // The lead figure sits in the lead column, under the list rows'.
                 HStack(spacing: 8) {
-                    Text(byCost ? Format.tokens(tokens) : Format.usd(cost))
+                    Text(figures.other)
                         .foregroundStyle(.secondary)
-                        .frame(width: SpendColumn.tokens, alignment: .trailing)
-                    Text(byCost ? Format.usd(cost) : Format.tokens(tokens))
+                        .frame(width: SpendColumn.other, alignment: .trailing)
+                    Text(figures.lead)
                         .fontWeight(lead ? .semibold : .regular)
-                        .frame(width: SpendColumn.cost, alignment: .trailing)
+                        .frame(width: SpendColumn.lead, alignment: .trailing)
                 }
                 .font(.system(size: 11.5))
                 .opacity(lead ? 1 : 0.45)
@@ -393,18 +400,15 @@ private struct SpendCalendar: View {
                 if inside { hovered = day.id } else if hovered == day.id { hovered = nil }
             }
             .accessibilityElement()
-            .accessibilityLabel(day.readout)
+            .accessibilityLabel(day.readout(byCost: byCost))
         }
     }
 
     private func readout(byCost: Bool) -> some View {
-        // Dollars first, as in the weekly totals; tokens first only when nothing is priced.
-        func amounts(tokens: Int, cost: Double) -> String {
-            byCost ? "\(Format.usd(cost)) · \(Format.tokens(tokens)) tokens" : "\(Format.tokens(tokens)) tokens · \(Format.usd(cost))"
-        }
+        func amounts(tokens: Int, cost: Double) -> String { SpendText.amounts(tokens: tokens, cost: cost, byCost: byCost) }
         return Group {
             if let day = summary.days.first(where: { $0.id == hovered }) {
-                Text("\(day.dayLabel) · \(amounts(tokens: day.tokens, cost: day.cost))").foregroundStyle(.secondary)
+                Text(day.readout(byCost: byCost)).foregroundStyle(.secondary)
             } else if range == .today {
                 let prior = summary.days.filter { !$0.inRange }
                 Text("Prior \(prior.count) days, in gray · "
@@ -473,10 +477,24 @@ private struct SpendCalendar: View {
 
 // MARK: Shared
 
-/// Widths shared by model rows and the calendar's weekly totals so their numbers line up.
+/// Widths shared by list rows and the calendar's weekly totals so their numbers line up: the lead figure in
+/// bold, the other unit beside it, and in rows the share between them.
 private enum SpendColumn {
-    static let tokens: CGFloat = 52
-    static let cost: CGFloat = 72
+    static let other: CGFloat = 52
+    static let share: CGFloat = 32
+    static let lead: CGFloat = 72
+}
+
+private enum SpendText {
+    /// "$153.62" leading "281.1M", or "281.1M" leading "$154".
+    static func figures(tokens: Int, cost: Double, byCost: Bool) -> (lead: String, other: String) {
+        byCost ? (Format.usd(cost), Format.tokens(tokens)) : (Format.tokens(tokens), Format.dollars(cost))
+    }
+
+    /// "$105.77 · 281.1M tokens", or tokens first when they lead.
+    static func amounts(tokens: Int, cost: Double, byCost: Bool) -> String {
+        byCost ? "\(Format.usd(cost)) · \(Format.tokens(tokens)) tokens" : "\(Format.tokens(tokens)) tokens · \(Format.usd(cost))"
+    }
 }
 
 /// Fills for the spend charts' provider stacks and legend, and the calendar's token-mix dots.
@@ -506,8 +524,8 @@ struct SpendPalette {
     var slit: CGFloat { style == .graphite ? 1 : 0 }
 }
 
-/// Top models, projects or sources for the range, by cost, each with its share of the range and a bar
-/// that long under it. Tokens are in the tooltip.
+/// Top models, projects or sources for the range, ranked by the lead figure (dollars or tokens), each with the
+/// other figure, its share of the range and a bar that long under it.
 private struct BreakdownRows: View {
     let summary: SpendSummary
     @Binding var breakdown: SpendBreakdown
@@ -589,14 +607,15 @@ private struct BreakdownRows: View {
     /// Rows follow the chart above them, one after another.
     private static func rowDelay(_ index: Int) -> Double { 0.1 + 0.03 * Double(index) }
 
-    /// Share of the range's cost, or of its tokens when nothing in it is priced.
+    /// Share of the range in the lead figure.
     private func fraction(tokens: Int, cost: Double) -> Double {
-        summary.cost > 0 ? cost / summary.cost : Double(tokens) / Double(max(summary.tokens.total, 1))
+        summary.leadsWithCost ? cost / summary.cost : Double(tokens) / Double(max(summary.tokens.total, 1))
     }
 
     private func row<Icon: View>(_ id: String, _ name: String, tokens: Int, cost: Double, help: String, bar: Color,
                                  @ViewBuilder icon: () -> Icon) -> some View {
         let fraction = fraction(tokens: tokens, cost: cost)
+        let figures = SpendText.figures(tokens: tokens, cost: cost, byCost: summary.leadsWithCost)
         return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
                 icon()
@@ -604,12 +623,18 @@ private struct BreakdownRows: View {
                 SlidingLabel(text: name, sliding: hovered == id && revealed)
                     .fontWeight(.medium)
                 Spacer(minLength: 6)
-                Text(fraction > 0 && fraction < 0.01 ? "<1%" : Format.percent(fraction * 100))
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.tertiary)
-                Text(Format.usd(cost))
+                HStack(spacing: 0) {
+                    Text(figures.other)
+                        .foregroundStyle(.secondary)
+                        .frame(width: SpendColumn.other, alignment: .trailing)
+                    Text(fraction > 0 && fraction < 0.01 ? "<1%" : Format.percent(fraction * 100))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: SpendColumn.share, alignment: .trailing)
+                }
+                .font(.system(size: 11.5))
+                Text(figures.lead)
                     .fontWeight(.semibold)
-                    .frame(width: SpendColumn.cost, alignment: .trailing)
+                    .frame(width: SpendColumn.lead, alignment: .trailing)
             }
             .frame(height: 21)
             RoundedRectangle(cornerRadius: 1)
@@ -624,7 +649,7 @@ private struct BreakdownRows: View {
         .onHover { inside in
             if inside { hovered = id } else if hovered == id { hovered = nil }
         }
-        .help("\(help) · \(Format.tokens(tokens)) tokens")
+        .help(help)
         .accessibilityElement(children: .combine)
     }
 }
@@ -732,7 +757,7 @@ private extension DaySpend {
 
     var shortDate: String { day.formatted(.dateTime.month(.abbreviated).day()) }
 
-    var readout: String { "\(dayLabel) · \(Format.tokens(tokens)) tokens · \(Format.usd(cost))" }
+    func readout(byCost: Bool) -> String { "\(dayLabel) · \(SpendText.amounts(tokens: tokens, cost: cost, byCost: byCost))" }
 
     /// What the charts size and shade a day by: its cost, or its tokens when nothing charted has a price.
     func value(byCost: Bool) -> Double { byCost ? cost : Double(tokens) }

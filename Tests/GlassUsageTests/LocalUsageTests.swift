@@ -71,7 +71,7 @@ import Testing
                        cacheWrite1h: 0, recordedCost: nil, project: project.0)
         }
         return SpendSummary(reports: [LocalUsageReport.build(provider: .claude, entries: entries, pricing: .builtIn, days: 30, now: now)],
-                            range: .today).projects
+                            range: .today, unit: .value).projects
     }
 
     @Test func smallAndTemporaryProjectsFoldIntoOtherLast() {
@@ -107,13 +107,13 @@ import Testing
         let reports = [ProviderID.claude, .codex, .muse].map {
             LocalUsageReport.build(provider: $0, entries: entries, pricing: .builtIn, days: 30, now: now)
         }
-        let projects = SpendSummary(reports: reports, range: .today).projects
+        let projects = SpendSummary(reports: reports, range: .today, unit: .value).projects
 
         #expect(projects.map(\.name) == ["work/app", "personal/app", "~", "Other"], "one project across providers, Other last")
         #expect(projects.map(\.tokens.total) == [500, 400, 50, 100])
     }
 
-    @Test func listsRankByCostWithSourcesSplitOut() {
+    @Test func listsRankByTheChosenUnitWithSourcesSplitOut() {
         let now = Date.now
         func entry(_ key: String, _ provider: ProviderID, _ source: LocalSource, _ model: String, _ project: String, _ tokens: Int) -> UsageEntry {
             UsageEntry(key: key, at: now, provider: provider, source: source, model: model,
@@ -129,13 +129,18 @@ import Testing
         let reports = [ProviderID.claude, .codex].map {
             LocalUsageReport.build(provider: $0, entries: entries, pricing: .builtIn, days: 30, now: now)
         }
-        let summary = SpendSummary(reports: reports, range: .today)
+        let summary = SpendSummary(reports: reports, range: .today, unit: .value)
 
         #expect(summary.models.map(\.model) == ["claude-opus-5-5", "gpt-5.1-codex-mini"])
         #expect(summary.projects.map(\.name) == ["dear", "cheap"])
         #expect(summary.sources.map(\.source) == [.claudeCode, .omp, .codexCLI])
         #expect(summary.sources.map(\.tokens.total) == [500_000, 200_000, 2_000_000])
         #expect(abs(summary.sources.reduce(0) { $0 + $1.cost } - summary.cost) < 1e-9, "sources add up to the range")
+
+        let byTokens = SpendSummary(reports: reports, range: .today, unit: .tokens)
+        #expect(byTokens.models.map(\.model) == ["gpt-5.1-codex-mini", "claude-opus-5-5"])
+        #expect(byTokens.projects.map(\.name) == ["cheap", "dear"])
+        #expect(byTokens.sources.map(\.source) == [.codexCLI, .claudeCode, .omp])
     }
 
     @Test func codexForkSkipsReplayedHistory() throws {

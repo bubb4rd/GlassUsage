@@ -48,6 +48,13 @@ struct SettingsView: View {
                 .reveal(after: Motion.step * 2)
 
                 section("Spend") {
+                    row("Show") {
+                        PillPicker(options: SpendUnit.allCases.map { ($0, $0.label) }, selection: $settings.spendUnit) {
+                            Image(systemName: $0.symbol).font(.system(size: 9.5, weight: .semibold))
+                        }
+                    }
+                    .help("What the spend block leads with and ranks by: dollars at API list prices, or tokens")
+                    divider
                     row("Chart") {
                         PillPicker(options: SpendView.allCases.map { ($0, $0.label) }, selection: $settings.spendView) {
                             Image(systemName: $0.symbol).font(.system(size: 9.5))
