@@ -12,7 +12,7 @@
 
 <p align="center">Your Claude, Codex, Antigravity and Muse Code plan limits, plus the tokens you burn, one click away in the menu bar.</p>
 
-<p align="center"><img src="docs/hero.jpg" alt="GlassUsage open from the macOS menu bar: Claude and Codex session and weekly limit rings, then 30 days of token spend by day and by model"></p>
+<p align="center"><img src="docs/hero.jpg" alt="GlassUsage panels up close at an angle: Antigravity's rings on their own, limits and spend for Claude, Codex, Antigravity and Muse Code in solid and dither fills, and Settings editing a Duo menu bar ring"></p>
 
 GlassUsage is a native Liquid Glass menu bar app for macOS. It shows how much of your session and weekly limits you've used and when each one resets, so you're never surprised mid-task. Optionally, it also shows how many tokens you've burned and what they would cost at API prices.
 
