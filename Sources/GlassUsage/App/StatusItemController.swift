@@ -17,6 +17,9 @@ final class StatusItemController: NSObject {
     private var hoverOpenTask: Task<Void, Never>?
     private var leaveWatch: Timer?
     private var pointerLeftAt: CFTimeInterval?
+    /// The countdown starts only once the pointer has been near the panel, so a panel opened without it
+    /// (VoiceOver, keyboard, "Settings…" from the menu) doesn't close before the pointer gets there.
+    private var pointerHasBeenNear = false
     /// Opened by hover and not clicked since: a click on the icon then keeps it open instead of closing it,
     /// since it was most likely aimed at opening it.
     private var openedByHover = false
@@ -96,13 +99,19 @@ final class StatusItemController: NSObject {
         }
         hoverOpenTask?.cancel()
         if panel.isPresented {
-            if openedByHover { openedByHover = false } else { hidePanel() }
+            if openedByHover {
+                openedByHover = false
+                panel.makeKey()
+            } else {
+                hidePanel()
+            }
         } else {
             showPanel(byHover: false)
         }
     }
 
     private func showContextMenu() {
+        hoverOpenTask?.cancel()
         hidePanel()
         let menu = NSMenu()
         menu.addItem(withTitle: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r").target = self
@@ -122,8 +131,7 @@ final class StatusItemController: NSObject {
     @objc private func checkForUpdates() { updater.checkForUpdates() }
 
     @objc private func openSettings() {
-        panelModel.showingSettings = true
-        showPanel(byHover: false)
+        showPanel(byHover: false, settings: true)
     }
 
     // MARK: Hover
@@ -150,6 +158,7 @@ final class StatusItemController: NSObject {
     private func startLeaveWatch() {
         stopLeaveWatch()
         pointerLeftAt = nil
+        pointerHasBeenNear = false
         leaveWatch = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkPointer() }
         }
@@ -159,7 +168,10 @@ final class StatusItemController: NSObject {
         guard panel.isPresented else { return stopLeaveWatch() }
         // A held button is a drag (or a click) in progress; closing mid-drag would drop it.
         if pointerIsNearPanel() || NSEvent.pressedMouseButtons != 0 {
+            pointerHasBeenNear = true
             pointerLeftAt = nil
+        } else if !pointerHasBeenNear {
+            return
         } else if let left = pointerLeftAt {
             if CACurrentMediaTime() - left >= Self.leaveGrace { hidePanel() }
         } else {
@@ -167,13 +179,16 @@ final class StatusItemController: NSObject {
         }
     }
 
-    /// Over the panel, the icon, the gap between them, or another of GlassUsage's windows (the Privacy popover
-    /// hangs off the panel in a window of its own).
+    /// Over the panel, the icon, the gap between them, or a window the panel opened (the Privacy popover hangs
+    /// off it in a window of its own). Such a window sits at the panel's level or above to show over it, which
+    /// leaves out normal windows like Sparkle's.
     private func pointerIsNearPanel() -> Bool {
         let pointer = NSEvent.mouseLocation
         let margin = Self.leaveMargin
         if panel.frame.union(statusButtonScreenRect()).insetBy(dx: -margin, dy: -margin).contains(pointer) { return true }
-        return NSApp.windows.contains { $0.isVisible && $0.frame.insetBy(dx: -margin, dy: -margin).contains(pointer) }
+        return NSApp.windows.contains {
+            $0.isVisible && $0.level >= panel.level && $0.frame.insetBy(dx: -margin, dy: -margin).contains(pointer)
+        }
     }
 
     private func stopLeaveWatch() {
@@ -188,19 +203,24 @@ final class StatusItemController: NSObject {
         return window.convertToScreen(button.convert(button.bounds, to: nil))
     }
 
-    private func showPanel(byHover: Bool) {
+    /// `settings` opens on Settings, otherwise on the usage page: a panel reopened mid-fade skips the close's
+    /// reset and would otherwise come back on whatever page it closed on.
+    private func showPanel(byHover: Bool, settings: Bool = false) {
         let buttonRect = statusButtonScreenRect()
         anchor = NSPoint(x: buttonRect.midX, y: buttonRect.minY - 6)
         openedByHover = byHover
+        panelModel.showingSettings = settings
         layoutPanel(size: panel.idealContentSize())
 
         store.refreshIfStale()
-        panel.present()
+        // Hover can open it mid-typing; keystrokes stay with the app being typed in until a click on the panel or icon.
+        panel.present(takeFocus: !byHover)
         panelModel.revealed = true
         statusItem.button?.highlight(true)
         statusItem.button?.toolTip = nil
 
         startLeaveWatch()
+        removeMonitors()
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated { self?.hidePanel() }
         }
@@ -208,6 +228,7 @@ final class StatusItemController: NSObject {
             guard let self else { return event }
             if event.type == .leftMouseDown, event.window === self.panel {
                 self.openedByHover = false
+                self.panel.makeKey()
             }
             guard event.type == .keyDown else { return event }
             if event.keyCode == 53 { // Escape: leave Settings first, then close.
@@ -230,15 +251,19 @@ final class StatusItemController: NSObject {
         panelModel.revealed = false
         stopLeaveWatch()
         openedByHover = false
-        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
-        outsideClickMonitor = nil
-        keyMonitor = nil
+        removeMonitors()
         statusItem.button?.highlight(false)
         panel.dismiss { [weak self] in
             self?.panelModel.showingSettings = false
             self?.updateButton()
         }
+    }
+
+    private func removeMonitors() {
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        outsideClickMonitor = nil
+        keyMonitor = nil
     }
 
     /// Keeps the panel hanging from the status item as its content grows or shrinks.

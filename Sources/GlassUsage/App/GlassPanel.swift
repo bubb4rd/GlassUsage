@@ -94,8 +94,9 @@ final class GlassPanel: NSPanel {
     }
 
     /// Opening drops the panel from the menu bar: it fades in while unrolling from a shorter height, its top
-    /// edge fixed. Closing folds it back up as it fades. Reduce Motion keeps only the fades.
-    func present() {
+    /// edge fixed. Closing folds it back up as it fades. Reduce Motion keeps only the fades. `takeFocus` makes it
+    /// key, for Escape and keyboard navigation; without it, keystrokes stay with the app underneath.
+    func present(takeFocus: Bool) {
         isPresented = true
         presentation += 1
         let motion = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -104,7 +105,7 @@ final class GlassPanel: NSPanel {
             if motion { setFrame(folded(restingFrame), display: false) }
         }
         orderFrontRegardless()
-        makeKey()
+        if takeFocus { makeKey() }
         NSAnimationContext.runAnimationGroup { context in
             // Gentle enough at the start that the unroll still shows while the fade comes up.
             context.duration = 0.36
