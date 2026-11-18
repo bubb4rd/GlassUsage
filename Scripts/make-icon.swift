@@ -1,4 +1,4 @@
-// Renders Support/AppIcon.icns and docs/icon.png from the icon artwork (docs/logo/glassusage-icon.png): the
+// Renders Support/AppIcon.icns and docs/app-icon.png from the icon artwork (docs/logo/glassusage-icon.png): the
 // square artwork clipped to the macOS icon tile, with its drop shadow and a faint rim light.
 // Usage: swift Scripts/make-icon.swift
 import AppKit
@@ -52,10 +52,10 @@ for points in [16, 32, 128, 256, 512] {
     try render(size: points * 2).write(to: iconset.appending(path: "icon_\(points)x\(points)@2x.png"))
 }
 // The README shows it at 128pt.
-try render(size: 256).write(to: root.appending(path: "docs/icon.png"))
+try render(size: 256).write(to: root.appending(path: "docs/app-icon.png"))
 let iconutil = Process()
 iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 iconutil.arguments = ["-c", "icns", iconset.path, "-o", root.appending(path: "Support/AppIcon.icns").path]
 try iconutil.run()
 iconutil.waitUntilExit()
-print(iconutil.terminationStatus == 0 ? "Wrote Support/AppIcon.icns and docs/icon.png" : "iconutil failed")
+print(iconutil.terminationStatus == 0 ? "Wrote Support/AppIcon.icns and docs/app-icon.png" : "iconutil failed")

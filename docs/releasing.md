@@ -45,7 +45,7 @@ Keep that file somewhere safe and offline, never in the repo. Restore it on a ne
 
 ## App icon
 
-The app icon and the README's `docs/icon.png` come from the square artwork in `docs/logo/glassusage-icon.png`, clipped to the macOS icon shape. `docs/logo/glassusage-logo.svg` is the white mark alone. To regenerate the icons:
+The app icon and the README's `docs/app-icon.png` come from the square artwork in `docs/logo/glassusage-icon.png`, clipped to the macOS icon shape. `docs/logo/glassusage-logo.svg` is the white mark alone. To regenerate the icons:
 
 ```sh
 swift Scripts/make-icon.swift
