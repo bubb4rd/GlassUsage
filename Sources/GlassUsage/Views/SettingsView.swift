@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Settings grouped by what they change: which limits are tracked, the menu bar item, the spend block, and
@@ -200,17 +201,16 @@ struct SettingsView: View {
         }
     }
 
-    /// A compact value that opens a menu of `options`: for settings set once and rarely revisited.
+    /// A compact value that opens a menu of `options`: for settings set once and rarely revisited. The menu is
+    /// AppKit's: SwiftUI's `Menu` shows its items disabled in this non-activating panel, so nothing could be picked.
     private func menuPicker<Value: Hashable>(_ options: [(value: Value, label: String)], selection: Binding<Value>,
                                              help: String) -> some View {
-        Menu {
-            Picker(help, selection: selection) {
-                ForEach(options, id: \.value) { Text($0.label).tag($0.value) }
-            }
-            .pickerStyle(.inline)
+        let selected = options.firstIndex { $0.value == selection.wrappedValue }
+        return Button {
+            OptionMenu.popUp(options.map(\.label), selected: selected) { selection.wrappedValue = options[$0].value }
         } label: {
             HStack(spacing: 5) {
-                Text(options.first { $0.value == selection.wrappedValue }?.label ?? "")
+                Text(selected.map { options[$0].label } ?? "")
                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
@@ -221,13 +221,12 @@ struct SettingsView: View {
             .background(RoundedRectangle(cornerRadius: 8).fill(Theme.fill2))
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
-        .menuStyle(.button)
         .buttonStyle(.plain)
         .pointingHand()
-        .menuIndicator(.hidden)
         .fixedSize()
         .help(help)
         .accessibilityLabel(help)
+        .accessibilityValue(selected.map { options[$0].label } ?? "")
     }
 
     /// The spend chart's providers as a short stack in `colors`, so each option shows what it looks like.
@@ -467,5 +466,31 @@ private struct FlowLayout: Layout {
             rows[rows.count - 1].indices.append(index)
         }
         return rows
+    }
+}
+
+/// The settings dropdowns' menu, popped up under the pointer with the current choice beneath it, as a pop-up
+/// button opens.
+private enum OptionMenu {
+    static func popUp(_ labels: [String], selected: Int?, choose: @escaping (Int) -> Void) {
+        let handler = Handler(choose: choose)
+        let menu = NSMenu()
+        for (index, label) in labels.enumerated() {
+            let item = NSMenuItem(title: label, action: #selector(Handler.pick(_:)), keyEquivalent: "")
+            item.target = handler
+            item.tag = index
+            item.state = index == selected ? .on : .off
+            menu.addItem(item)
+        }
+        // Runs the menu until it closes; the items only hold the handler weakly.
+        withExtendedLifetime(handler) {
+            _ = menu.popUp(positioning: selected.flatMap { menu.item(at: $0) }, at: NSEvent.mouseLocation, in: nil)
+        }
+    }
+
+    private final class Handler: NSObject {
+        let choose: (Int) -> Void
+        init(choose: @escaping (Int) -> Void) { self.choose = choose }
+        @objc func pick(_ item: NSMenuItem) { choose(item.tag) }
     }
 }
