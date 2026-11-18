@@ -15,8 +15,6 @@ enum Theme {
     static let s2 = dynamic(0xEB6834, 0xD95926)  // orange
     static let s3 = dynamic(0x1BAF7A, 0x199E70)  // green
     static let s4 = dynamic(0xEDA100, 0xC98500)  // amber
-    static let s5 = dynamic(0x7B5BD6, 0x8C6CE6)  // violet
-    static let s6 = dynamic(0x0E9AAE, 0x16A8BC)  // teal
     static let accent = dynamic(0xEB6834, 0xEB6834)
 
     // Status bands.
@@ -25,15 +23,22 @@ enum Theme {
     static let serious = dynamic(0xEC835A, 0xEC835A)
     static let critical = dynamic(0xD03B3B, 0xE66767)
 
-    /// Fixed identity color per provider, used for dots, chart stacks and share bars.
-    static func color(for provider: ProviderID) -> Color {
-        switch provider {
-        case .claude: s2
-        case .codex: s1
-        case .antigravity: s6
-        case .muse: s5
-        }
+    /// Identity color per provider in a color theme, for chart stacks, the spend bar and list bars (graphite is
+    /// drawn by `SpendPalette`). Providers: each brand's own hue, Claude's clay, OpenAI's silver, Google blue
+    /// and Meta violet. Neon: brighter and further apart, made to glow in dither. Neither uses green, which
+    /// marks a limit with room left.
+    static func color(for provider: ProviderID, in colors: SpendColors) -> Color {
+        (colors == .neon ? neon : brand)[provider]!
     }
+
+    private static let brand: [ProviderID: Color] = [
+        .claude: dynamic(0xC4623F, 0xE08360), .codex: dynamic(0x55585F, 0xC9CDD6),
+        .antigravity: dynamic(0x1A73E8, 0x4F8FF7), .muse: dynamic(0x8A3FFC, 0xAC7BFF),
+    ]
+    private static let neon: [ProviderID: Color] = [
+        .claude: dynamic(0xE2580F, 0xFF7A3D), .codex: dynamic(0x2563EB, 0x4C8DFF),
+        .antigravity: dynamic(0x0891B2, 0x2ED3F0), .muse: dynamic(0xD12677, 0xFF4FB0),
+    ]
 
     /// Ordered by severity, so `max` picks the worse of two.
     enum Band: Comparable {
