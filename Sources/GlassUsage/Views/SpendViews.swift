@@ -153,8 +153,8 @@ private struct SpendLedger: View {
                 if summary.tokens.total > 0 {
                     // Whichever figure the headline doesn't show leads the mix.
                     let total = summary.unit == .tokens && summary.cost > 0
-                        ? "\(emphasis(Format.dollars(summary.cost))) API value"
-                        : "\(emphasis(Format.tokens(summary.tokens.total))) tokens"
+                        ? Text("\(emphasis(Format.dollars(summary.cost))) API value")
+                        : Text("\(emphasis(Format.tokens(summary.tokens.total))) tokens")
                     Text("\(total) · \(emphasis(share(summary.tokens.cacheRead, of: summary.tokens.total))) cache reads · \(emphasis(Format.tokens(summary.tokens.output))) output")
                         .help(mixNote(summary.tokens))
                 } else {
