@@ -22,6 +22,19 @@ import Testing
         #expect(StatusIcon.percentText(for: snapshot, mode: .off) == nil)
     }
 
+    @Test func aChosenGroupDrivesRingsAndPercentEvenWhenAnotherIsCloserToItsLimit() {
+        let snapshot = ProviderSnapshot(provider: .antigravity, plan: nil, windows: [
+            window("session", 10, group: "Gemini"), window("weekly", 30, group: "Gemini"),
+            window("session", 60, group: "Claude and GPT"), window("weekly", 95, group: "Claude and GPT"),
+        ], fetchedAt: .now)
+
+        #expect(StatusIcon.percentText(for: snapshot, mode: .highest) == "95%")
+        #expect(StatusIcon.percentText(for: snapshot, mode: .highest, group: "Gemini") == "30%")
+        #expect(StatusIcon.percentText(for: snapshot, mode: .both, group: "Gemini") == "10% · 30%")
+        #expect(StatusIcon.percentText(for: snapshot, mode: .highest, group: "Argon") == "95%",
+                "a group the provider no longer reports falls back to the one closest to its limit")
+    }
+
     @Test func missingSessionWindowShowsOnlyTheWeek() {
         let snapshot = ProviderSnapshot(provider: .muse, plan: nil, windows: [window("weekly", 12)], fetchedAt: .now)
 

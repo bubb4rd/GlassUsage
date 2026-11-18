@@ -42,6 +42,10 @@ struct SettingsView: View {
                         menuPicker(MenuBarPercent.allCases.map { ($0, $0.label) }, selection: $settings.menuBarPercent,
                                    help: "The percentage beside the menu bar glyph")
                     }
+                    ForEach(groupedProviders) { provider in
+                        divider
+                        row("\(provider.displayName) models") { groupControl(provider) }
+                    }
                     divider
                     row("Open on hover") { Toggle("Open on hover", isOn: $settings.openOnHover).pointingHand() }
                 }
@@ -304,7 +308,8 @@ struct SettingsView: View {
         let settings = store.settings
         return Button { settings.menuBarProvider = provider } label: {
             HStack(spacing: 6) {
-                StatusItemPreview(state: state, rings: settings.menuBarRings, percent: settings.menuBarPercent)
+                StatusItemPreview(state: state, rings: settings.menuBarRings, percent: settings.menuBarPercent,
+                                  group: settings.menuBarGroup(for: provider))
                 Text(provider.displayName).fixedSize()
             }
             .padding(.leading, 2)
@@ -319,6 +324,23 @@ struct SettingsView: View {
             : "Show \(provider.displayName) in the menu bar")
         .accessibilityLabel("Show \(provider.displayName) in the menu bar")
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// Tracked providers that meter model groups separately, so the menu bar has a group to pick.
+    private var groupedProviders: [ProviderID] {
+        store.settings.enabledProviders.filter { (store.state(for: $0).snapshot?.groups.count ?? 0) > 1 }
+    }
+
+    /// The model group the menu bar shows and the panel opens on; a group the provider stopped reporting reads
+    /// as the default.
+    private func groupControl(_ provider: ProviderID) -> some View {
+        let settings = store.settings
+        let groups = store.state(for: provider).snapshot?.groups ?? []
+        let options: [(value: String?, label: String)] = [(nil, "Closest to limit")] + groups.map { ($0, $0) }
+        return menuPicker(options, selection: Binding(
+            get: { settings.menuBarGroup(for: provider).flatMap { groups.contains($0) ? $0 : nil } },
+            set: { settings.setMenuBarGroup($0, for: provider) }),
+                          help: "The \(provider.displayName) model group the menu bar shows")
     }
 
     /// A titled card of rows; areas of the app each get one.
@@ -353,12 +375,13 @@ private struct StatusItemPreview: View {
     let state: ProviderState
     let rings: MenuBarRings
     let percent: MenuBarPercent
+    let group: String?
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(nsImage: StatusIcon.image(for: state, rings: rings))
+            Image(nsImage: StatusIcon.image(for: state, rings: rings, group: group))
                 .renderingMode(.template)
-            if let text = StatusIcon.percentText(for: state.snapshot, mode: percent) {
+            if let text = StatusIcon.percentText(for: state.snapshot, mode: percent, group: group) {
                 Text(text)
                     .font(.system(size: 12, weight: .medium))
                     .monospacedDigit()

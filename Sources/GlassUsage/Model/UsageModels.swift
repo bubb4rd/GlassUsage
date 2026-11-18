@@ -97,17 +97,29 @@ nonisolated struct ProviderSnapshot: Codable, Hashable, Sendable {
         return windows.compactMap(\.group).filter { seen.insert($0).inserted }
     }
 
-    /// The windows the menu bar ring draws: the group holding the most constrained window, or all of them.
-    var iconWindows: [UsageWindow] {
-        guard let group = mostConstrained?.group else { return windows }
-        return windows.filter { $0.group == group }
+    /// The group the menu bar shows and the panel opens on: `preferred` while the provider reports it, otherwise
+    /// the one holding the window closest to its limit. Nil when the windows are account-wide.
+    func shownGroup(preferring preferred: String?) -> String? {
+        let groups = groups
+        guard !groups.isEmpty else { return nil }
+        if let preferred, groups.contains(preferred) { return preferred }
+        return mostConstrained?.group ?? groups[0]
     }
 
-    /// The menu bar group's session window (shorter than a day), if the provider reported one.
-    var sessionWindow: UsageWindow? { iconWindows.first { $0.key == "session" } }
+    /// The reading narrowed to the windows the menu bar draws: the shown group's, or all of them when they're
+    /// account-wide.
+    func menuBarReading(preferring group: String?) -> ProviderSnapshot {
+        guard let shown = shownGroup(preferring: group) else { return self }
+        return ProviderSnapshot(provider: provider, plan: plan, windows: windows.filter { $0.group == shown },
+                                fetchedAt: fetchedAt)
+    }
 
-    /// The menu bar group's longest window: the week, or the month on some Codex plans.
-    var longWindow: UsageWindow? { iconWindows.last { $0.key != "session" } }
+    /// The session window (shorter than a day), if the provider reported one. Of a `menuBarReading`, since
+    /// a provider that meters groups has one per group.
+    var sessionWindow: UsageWindow? { windows.first { $0.key == "session" } }
+
+    /// The longest window: the week, or the month on some Codex plans. Of a `menuBarReading`, like `sessionWindow`.
+    var longWindow: UsageWindow? { windows.last { $0.key != "session" } }
 
     /// The reading as of `now`: a window whose reset has passed reads 0% with no known reset until the next
     /// fetch, so an old reading never shows a limit that has already reset.

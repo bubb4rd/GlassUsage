@@ -21,6 +21,9 @@ final class AppSettings {
     /// Which percentage the menu bar shows next to the glyph.
     var menuBarPercent: MenuBarPercent { didSet { defaults.set(menuBarPercent.rawValue, forKey: Keys.percent) } }
     var menuBarProvider: ProviderID { didSet { defaults.set(menuBarProvider.rawValue, forKey: Keys.menuBarProvider) } }
+    /// For providers that meter model groups separately (Antigravity), the group the menu bar shows and the panel
+    /// opens on, by provider id. A provider without one follows the group closest to its limit.
+    private var menuBarGroups: [String: String] { didSet { defaults.set(menuBarGroups, forKey: Keys.menuBarGroups) } }
     var refreshMinutes: Int { didSet { defaults.set(refreshMinutes, forKey: Keys.refresh) } }
     /// Show the token-spend block (totals, days, mix, models) below the limits.
     var showSpend: Bool { didSet { defaults.set(showSpend, forKey: Keys.spend) } }
@@ -94,6 +97,7 @@ final class AppSettings {
         menuBarRings = MenuBarRings(rawValue: defaults.string(forKey: Keys.rings) ?? "") ?? .both
         menuBarPercent = MenuBarPercent(rawValue: defaults.string(forKey: Keys.percent) ?? "") ?? .highest
         menuBarProvider = ProviderID(rawValue: defaults.string(forKey: Keys.menuBarProvider) ?? "") ?? .claude
+        menuBarGroups = defaults.dictionary(forKey: Keys.menuBarGroups) as? [String: String] ?? [:]
         refreshMinutes = defaults.integer(forKey: Keys.refresh)
         showSpend = defaults.bool(forKey: Keys.spend)
         spendView = SpendView(rawValue: defaults.string(forKey: Keys.spendView) ?? "") ?? .ledger
@@ -126,6 +130,15 @@ final class AppSettings {
         if isOn { enabled.insert(provider) } else { enabled.remove(provider) }
     }
 
+    func menuBarGroup(for provider: ProviderID) -> String? {
+        menuBarGroups[provider.rawValue]
+    }
+
+    /// Nil goes back to following the group closest to its limit.
+    func setMenuBarGroup(_ group: String?, for provider: ProviderID) {
+        menuBarGroups[provider.rawValue] = group
+    }
+
     /// `spendLists` in tab order.
     var shownSpendLists: [SpendBreakdown] { SpendBreakdown.allCases.filter(spendLists.contains) }
 
@@ -141,6 +154,7 @@ final class AppSettings {
         static let spendUnit = "spendUnit"
         static let spendLists = "spendLists"
         static let menuBarProvider = "menuBarProvider"
+        static let menuBarGroups = "menuBarGroups"
         static let refresh = "refreshMinutes"
         static let limitAlert = "limitAlert"
         /// Named for the setting's first use, project logos; kept so the choice carries over.

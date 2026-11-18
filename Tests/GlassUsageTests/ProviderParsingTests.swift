@@ -35,7 +35,7 @@ import Testing
 
         // The menu bar ring follows the group closest to its limit.
         #expect(snapshot.mostConstrained?.id == "Gemini/session")
-        #expect(snapshot.iconWindows.map(\.id) == ["Gemini/session", "Gemini/weekly"])
+        #expect(snapshot.menuBarReading(preferring: nil).windows.map(\.id) == ["Gemini/session", "Gemini/weekly"])
     }
 
     @Test func antigravityWithoutBucketsHasNoQuota() throws {

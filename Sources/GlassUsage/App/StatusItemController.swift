@@ -75,9 +75,10 @@ final class StatusItemController: NSObject {
         let snapshot = state?.snapshot?.current(at: .now)
 
         let settings = store.settings
-        button.image = StatusIcon.image(for: state, rings: settings.menuBarRings)
+        let group = provider.flatMap(settings.menuBarGroup)
+        button.image = StatusIcon.image(for: state, rings: settings.menuBarRings, group: group)
 
-        if let percent = StatusIcon.percentText(for: snapshot, mode: settings.menuBarPercent) {
+        if let percent = StatusIcon.percentText(for: snapshot, mode: settings.menuBarPercent, group: group) {
             button.attributedTitle = NSAttributedString(
                 string: " \(percent)",
                 attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)])

@@ -8,11 +8,11 @@ enum StatusIcon {
     static let staleAfter: TimeInterval = 30 * 60
 
     /// The glyph for a provider's latest state, as the menu bar draws it. Providers that meter model
-    /// groups show the group closest to its limit.
-    static func image(for state: ProviderState?, rings: MenuBarRings, now: Date = .now) -> NSImage {
-        let snapshot = state?.snapshot?.current(at: now)
+    /// groups show `group`, or the group closest to its limit when that's nil or no longer reported.
+    static func image(for state: ProviderState?, rings: MenuBarRings, group: String? = nil, now: Date = .now) -> NSImage {
+        let snapshot = state?.snapshot?.current(at: now).menuBarReading(preferring: group)
         let stale = snapshot.map { now.timeIntervalSince($0.fetchedAt) > staleAfter } ?? true
-        let windows = snapshot?.iconWindows ?? []
+        let windows = snapshot?.windows ?? []
         let fractions: [Double?] = switch rings {
         // A provider with a single window gets only the outer ring.
         case .both: windows.count == 1 ? [windows[0].fraction] : [windows.first?.fraction, windows.last?.fraction]
@@ -22,9 +22,11 @@ enum StatusIcon {
         return image(rings: fractions, dimmed: stale || state?.error != nil)
     }
 
-    /// The percentage beside the glyph, or nil when the mode is off or the window has no reading.
-    static func percentText(for snapshot: ProviderSnapshot?, mode: MenuBarPercent, now: Date = .now) -> String? {
-        let snapshot = snapshot?.current(at: now)
+    /// The percentage beside the glyph, or nil when the mode is off or the window has no reading. Reads the same
+    /// group as the rings.
+    static func percentText(for snapshot: ProviderSnapshot?, mode: MenuBarPercent, group: String? = nil,
+                            now: Date = .now) -> String? {
+        let snapshot = snapshot?.current(at: now).menuBarReading(preferring: group)
         func percent(_ window: UsageWindow?) -> String? { window.map { "\(Int($0.percent.rounded()))%" } }
         switch mode {
         case .off: return nil

@@ -113,7 +113,8 @@ struct LimitsSection: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(providers.enumerated()), id: \.element) { index, provider in
                 // The first provider's title sits in the panel header.
-                ProviderLimits(provider: provider, state: store.state(for: provider), now: now, showsTitle: index > 0)
+                ProviderLimits(provider: provider, state: store.state(for: provider), now: now, showsTitle: index > 0,
+                               preferredGroup: store.settings.menuBarGroup(for: provider))
                     .reveal(after: Motion.step * Double(index + 1))
             }
         }
@@ -125,13 +126,15 @@ private struct ProviderLimits: View {
     let state: ProviderState
     let now: Date
     let showsTitle: Bool
+    /// The model group chosen in Settings; nil follows the group closest to its limit.
+    let preferredGroup: String?
 
-    /// Model group the user picked; nil follows the group closest to its limit, as the menu bar does.
+    /// Model group the arrows stepped to; nil shows the same group as the menu bar.
     @State private var pickedGroup: String?
 
     var body: some View {
         let snapshot = state.snapshot?.current(at: now)
-        let group = snapshot.flatMap(shownGroup)
+        let group = snapshot?.shownGroup(preferring: pickedGroup ?? preferredGroup)
         VStack(alignment: .leading, spacing: 0) {
             if showsTitle || group != nil {
                 HStack(spacing: 7) {
@@ -171,14 +174,6 @@ private struct ProviderLimits: View {
         }
         .padding(.top, showsTitle ? 9 : 6)
         .padding(.bottom, 8)
-    }
-
-    /// The model group whose windows show, for providers that meter groups separately; nil for account-wide windows.
-    private func shownGroup(in snapshot: ProviderSnapshot) -> String? {
-        let groups = snapshot.groups
-        guard !groups.isEmpty else { return nil }
-        if let pickedGroup, groups.contains(pickedGroup) { return pickedGroup }
-        return snapshot.mostConstrained?.group ?? groups[0]
     }
 
     /// The shown group's windows (or all of them when windows are account-wide), shortest first.
