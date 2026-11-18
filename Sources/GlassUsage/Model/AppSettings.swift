@@ -16,14 +16,15 @@ final class AppSettings {
     }
     /// Peek at usage by hovering the menu bar icon, in addition to clicking.
     var openOnHover: Bool { didSet { defaults.set(openOnHover, forKey: Keys.hover) } }
-    /// Which windows the menu bar glyph draws as rings.
-    var menuBarRings: MenuBarRings { didSet { defaults.set(menuBarRings.rawValue, forKey: Keys.rings) } }
-    /// Which percentage the menu bar shows next to the glyph.
-    var menuBarPercent: MenuBarPercent { didSet { defaults.set(menuBarPercent.rawValue, forKey: Keys.percent) } }
-    var menuBarProvider: ProviderID { didSet { defaults.set(menuBarProvider.rawValue, forKey: Keys.menuBarProvider) } }
-    /// For providers that meter model groups separately (Antigravity), the group the menu bar shows and the panel
-    /// opens on, by provider id. A provider without one follows the group closest to its limit.
-    private var menuBarGroups: [String: String] { didSet { defaults.set(menuBarGroups, forKey: Keys.menuBarGroups) } }
+    /// What the menu bar draws: its icons, their rings, and their percentages.
+    var menuBarLayout: MenuBarLayout { didSet { defaults.set(Self.encode(menuBarLayout), forKey: Keys.menuBarLayout) } }
+    /// The layout last made in Settings' ring editor, offered beside the presets so picking one doesn't lose it.
+    var customMenuBarLayout: MenuBarLayout? {
+        didSet { defaults.set(customMenuBarLayout.flatMap(Self.encode), forKey: Keys.customMenuBarLayout) }
+    }
+    /// For providers that meter model groups separately (Antigravity), the group the panel opens on, by provider
+    /// id. A provider without one opens on the group closest to its limit.
+    private var panelGroups: [String: String] { didSet { defaults.set(panelGroups, forKey: Keys.panelGroups) } }
     var refreshMinutes: Int { didSet { defaults.set(refreshMinutes, forKey: Keys.refresh) } }
     /// Show the token-spend block (totals, days, mix, models) below the limits.
     var showSpend: Bool { didSet { defaults.set(showSpend, forKey: Keys.spend) } }
@@ -75,10 +76,7 @@ final class AppSettings {
         ]
         var registered: [String: Any] = [
             Keys.hover: false,
-            Keys.rings: MenuBarRings.both.rawValue,
-            Keys.percent: MenuBarPercent.highest.rawValue,
             Keys.spend: true,
-            Keys.menuBarProvider: ProviderID.claude.rawValue,
             Keys.refresh: 5,
             Keys.protectedFolders: false,
             Keys.logoHintDismissed: false,
@@ -87,17 +85,29 @@ final class AppSettings {
         for (provider, paths) in installed { registered[Keys.enabled(provider)] = paths.contains(where: fm.fileExists) }
         defaults.register(defaults: registered)
         // 1.1 stored the percentage as an on/off switch; carry "off" over.
-        if let legacy = defaults.object(forKey: Keys.legacyPercent) as? Bool {
-            if !legacy { defaults.set(MenuBarPercent.off.rawValue, forKey: Keys.percent) }
-            defaults.removeObject(forKey: Keys.legacyPercent)
+        if let legacy = defaults.object(forKey: Keys.legacyPercentSwitch) as? Bool {
+            if !legacy { defaults.set("off", forKey: Keys.legacyPercent) }
+            defaults.removeObject(forKey: Keys.legacyPercentSwitch)
         }
         let defaults = defaults
-        enabled = Set(ProviderID.allCases.filter { defaults.bool(forKey: Keys.enabled($0)) })
+        let enabled = Set(ProviderID.allCases.filter { defaults.bool(forKey: Keys.enabled($0)) })
+        self.enabled = enabled
         openOnHover = defaults.bool(forKey: Keys.hover)
-        menuBarRings = MenuBarRings(rawValue: defaults.string(forKey: Keys.rings) ?? "") ?? .both
-        menuBarPercent = MenuBarPercent(rawValue: defaults.string(forKey: Keys.percent) ?? "") ?? .highest
-        menuBarProvider = ProviderID(rawValue: defaults.string(forKey: Keys.menuBarProvider) ?? "") ?? .claude
-        menuBarGroups = defaults.dictionary(forKey: Keys.menuBarGroups) as? [String: String] ?? [:]
+        let panelGroups = defaults.dictionary(forKey: Keys.panelGroups) as? [String: String] ?? [:]
+        self.panelGroups = panelGroups
+        if let stored = Self.decode(defaults.data(forKey: Keys.menuBarLayout)), !stored.icons.isEmpty {
+            menuBarLayout = stored
+        } else {
+            // Before 1.5 the menu bar drew one provider; draw what it drew. Its settings stay, for an older version.
+            let provider = ProviderID(rawValue: defaults.string(forKey: Keys.legacyProvider) ?? "")
+                ?? ProviderID.allCases.first(where: enabled.contains) ?? .claude
+            let layout = MenuBarLayout.legacy(provider: provider, group: panelGroups[provider.rawValue],
+                                              rings: defaults.string(forKey: Keys.legacyRings),
+                                              percent: defaults.string(forKey: Keys.legacyPercent))
+            menuBarLayout = layout
+            defaults.set(Self.encode(layout), forKey: Keys.menuBarLayout)
+        }
+        customMenuBarLayout = Self.decode(defaults.data(forKey: Keys.customMenuBarLayout))
         refreshMinutes = defaults.integer(forKey: Keys.refresh)
         showSpend = defaults.bool(forKey: Keys.spend)
         spendView = SpendView(rawValue: defaults.string(forKey: Keys.spendView) ?? "") ?? .ledger
@@ -130,31 +140,54 @@ final class AppSettings {
         if isOn { enabled.insert(provider) } else { enabled.remove(provider) }
     }
 
-    func menuBarGroup(for provider: ProviderID) -> String? {
-        menuBarGroups[provider.rawValue]
+    /// The model group the panel opens on for `provider`.
+    func panelGroup(for provider: ProviderID) -> String? {
+        panelGroups[provider.rawValue]
     }
 
-    /// Nil goes back to following the group closest to its limit.
-    func setMenuBarGroup(_ group: String?, for provider: ProviderID) {
-        menuBarGroups[provider.rawValue] = group
+    /// Nil goes back to opening on the group closest to its limit.
+    func setPanelGroup(_ group: String?, for provider: ProviderID) {
+        panelGroups[provider.rawValue] = group
+    }
+
+    /// Tracked providers in the order the menu bar shows them, then the rest: the panel's order.
+    var panelProviders: [ProviderID] { menuBarLayout.ordered(enabledProviders) }
+
+    /// An edit made in Settings' ring editor; the result is also kept as the custom layout.
+    func editMenuBarLayout(_ edit: (inout MenuBarLayout) -> Void) {
+        var layout = menuBarLayout
+        edit(&layout)
+        guard layout != menuBarLayout else { return }
+        menuBarLayout = layout
+        customMenuBarLayout = layout
     }
 
     /// `spendLists` in tab order.
     var shownSpendLists: [SpendBreakdown] { SpendBreakdown.allCases.filter(spendLists.contains) }
 
+    private static func encode(_ layout: MenuBarLayout) -> Data? { try? JSONEncoder().encode(layout) }
+
+    private static func decode(_ data: Data?) -> MenuBarLayout? {
+        data.flatMap { try? JSONDecoder().decode(MenuBarLayout.self, from: $0) }
+    }
+
     private enum Keys {
         static func enabled(_ provider: ProviderID) -> String { "provider.\(provider.rawValue).enabled" }
         static let hover = "openOnHover"
-        static let rings = "menuBarRings"
-        static let percent = "menuBarPercent"
-        static let legacyPercent = "showPercentInMenuBar"
+        static let menuBarLayout = "menuBarLayout"
+        static let customMenuBarLayout = "customMenuBarLayout"
+        /// 1.4's menu bar settings, read once to carry them over and left in place.
+        static let legacyProvider = "menuBarProvider"
+        static let legacyRings = "menuBarRings"
+        static let legacyPercent = "menuBarPercent"
+        static let legacyPercentSwitch = "showPercentInMenuBar"
         static let spend = "showSpend"
         static let spendView = "spendView"
         static let spendColors = "spendColors"
         static let spendUnit = "spendUnit"
         static let spendLists = "spendLists"
-        static let menuBarProvider = "menuBarProvider"
-        static let menuBarGroups = "menuBarGroups"
+        /// Named for 1.4, where the group picked for the menu bar was also the one the panel opened on.
+        static let panelGroups = "menuBarGroups"
         static let refresh = "refreshMinutes"
         static let limitAlert = "limitAlert"
         /// Named for the setting's first use, project logos; kept so the choice carries over.
@@ -199,36 +232,6 @@ enum SpendColors: String, CaseIterable {
         switch self {
         case .graphite: "Graphite"
         case .providers: "Providers"
-        }
-    }
-}
-
-/// The windows the menu bar glyph draws: session inside and the longest window (week, or month) outside,
-/// or one of them alone as a single ring.
-enum MenuBarRings: String, CaseIterable {
-    case both, session, weekly
-
-    var label: String {
-        switch self {
-        case .both: "Both"
-        case .session: "Session"
-        case .weekly: "Weekly"
-        }
-    }
-}
-
-/// The percentage beside the glyph: none, the limit closest to running out, one window, or session and
-/// longest window side by side.
-enum MenuBarPercent: String, CaseIterable {
-    case off, highest, session, weekly, both
-
-    var label: String {
-        switch self {
-        case .off: "Off"
-        case .highest: "Highest"
-        case .session: "Session"
-        case .weekly: "Weekly"
-        case .both: "Session · Weekly"
         }
     }
 }

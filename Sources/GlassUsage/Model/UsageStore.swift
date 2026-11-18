@@ -61,14 +61,10 @@ final class UsageStore {
         }
     }
 
-    /// The provider the menu bar shows: the chosen one while it has a reading, otherwise the first
-    /// enabled provider that does, otherwise the first enabled one.
-    var menuBarProvider: ProviderID? {
-        let enabled = settings.enabledProviders
-        let withReading = enabled.filter { states[$0]?.snapshot != nil }
-        if withReading.contains(settings.menuBarProvider) { return settings.menuBarProvider }
-        if let first = withReading.first { return first }
-        return enabled.contains(settings.menuBarProvider) ? settings.menuBarProvider : enabled.first
+    /// `layout` (by default the menu bar's) as drawn from the latest readings. A provider that isn't tracked has
+    /// no reading to give, so its rings draw empty.
+    func menuBarIcons(_ layout: MenuBarLayout? = nil, now: Date = .now) -> [ResolvedIcon] {
+        (layout ?? settings.menuBarLayout).resolve(now: now) { settings.isEnabled($0) ? state(for: $0) : nil }
     }
 
     /// (Re)starts the refresh loop: a refresh now (or after `delay`), then one per refresh interval.

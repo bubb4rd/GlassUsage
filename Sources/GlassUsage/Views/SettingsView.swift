@@ -11,6 +11,8 @@ struct SettingsView: View {
 
     @State private var autoUpdates = false
     @State private var showingPrivacy = false
+    /// The ring, or with several icons the icon, the menu bar editor is changing; nil while it's closed.
+    @State var ringSelection: RingSelection?
 
     var body: some View {
         @Bindable var settings = store.settings
@@ -28,25 +30,15 @@ struct SettingsView: View {
                         .task {
                             if settings.limitAlert != .off { await store.alerts.refreshPermission() }
                         }
-                }
-                .reveal(after: Motion.step)
-
-                section("Menu bar") {
-                    FlowLayout { menuBarOptions }
-                        .padding(8)
-                    divider
-                    row("Rings") {
-                        PillPicker(options: MenuBarRings.allCases.map { ($0, $0.label) }, selection: $settings.menuBarRings)
-                    }
-                    divider
-                    row("Percentage") {
-                        menuPicker(MenuBarPercent.allCases.map { ($0, $0.label) }, selection: $settings.menuBarPercent,
-                                   help: "The percentage beside the menu bar glyph")
-                    }
                     ForEach(groupedProviders) { provider in
                         divider
                         row("\(provider.displayName) models") { groupControl(provider) }
                     }
+                }
+                .reveal(after: Motion.step)
+
+                section("Menu bar") {
+                    menuBarRings
                     divider
                     row("Open on hover") { Toggle("Open on hover", isOn: $settings.openOnHover).pointingHand() }
                 }
@@ -203,8 +195,8 @@ struct SettingsView: View {
 
     /// A compact value that opens a menu of `options`: for settings set once and rarely revisited. The menu is
     /// AppKit's: SwiftUI's `Menu` shows its items disabled in this non-activating panel, so nothing could be picked.
-    private func menuPicker<Value: Hashable>(_ options: [(value: Value, label: String)], selection: Binding<Value>,
-                                             help: String) -> some View {
+    func menuPicker<Value: Hashable>(_ options: [(value: Value, label: String)], selection: Binding<Value>,
+                                     help: String) -> some View {
         let selected = options.firstIndex { $0.value == selection.wrappedValue }
         return Button {
             OptionMenu.popUp(options.map(\.label), selected: selected) { selection.wrappedValue = options[$0].value }
@@ -287,59 +279,20 @@ struct SettingsView: View {
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// Each tracked provider drawn as the menu bar item it would produce, with the chosen rings and
-    /// percentage; picking one puts it in the menu bar.
-    @ViewBuilder
-    private var menuBarOptions: some View {
-        let enabled = store.settings.enabledProviders
-        if enabled.isEmpty {
-            Text("Turn on a provider").font(.system(size: 11.5)).foregroundStyle(.tertiary)
-        } else {
-            ForEach(enabled) { menuBarOption($0, selected: $0 == store.menuBarProvider) }
-            if enabled.count == 1 {
-                Text("only tracked").font(.system(size: 11.5)).foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    private func menuBarOption(_ provider: ProviderID, selected: Bool) -> some View {
-        let state = store.state(for: provider)
-        let settings = store.settings
-        return Button { settings.menuBarProvider = provider } label: {
-            HStack(spacing: 6) {
-                StatusItemPreview(state: state, rings: settings.menuBarRings, percent: settings.menuBarPercent,
-                                  group: settings.menuBarGroup(for: provider))
-                Text(provider.displayName).fixedSize()
-            }
-            .padding(.leading, 2)
-            .padding(.trailing, 7)
-            .chip(selected: selected, outlined: true)
-        }
-        .buttonStyle(.plain)
-        .disabled(state.snapshot == nil)
-        .opacity(state.snapshot == nil ? 0.55 : 1)
-        .help(state.snapshot == nil
-            ? "\(provider.displayName) has no reading to show"
-            : "Show \(provider.displayName) in the menu bar")
-        .accessibilityLabel("Show \(provider.displayName) in the menu bar")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    /// Tracked providers that meter model groups separately, so the menu bar has a group to pick.
+    /// Tracked providers that meter model groups separately, so the panel has a group to open on.
     private var groupedProviders: [ProviderID] {
         store.settings.enabledProviders.filter { (store.state(for: $0).snapshot?.groups.count ?? 0) > 1 }
     }
 
-    /// The model group the menu bar shows and the panel opens on; a group the provider stopped reporting reads
-    /// as the default.
+    /// The model group the panel opens on; a group the provider stopped reporting reads as the default.
     private func groupControl(_ provider: ProviderID) -> some View {
         let settings = store.settings
         let groups = store.state(for: provider).snapshot?.groups ?? []
         let options: [(value: String?, label: String)] = [(nil, "Closest to limit")] + groups.map { ($0, $0) }
         return menuPicker(options, selection: Binding(
-            get: { settings.menuBarGroup(for: provider).flatMap { groups.contains($0) ? $0 : nil } },
-            set: { settings.setMenuBarGroup($0, for: provider) }),
-                          help: "The \(provider.displayName) model group the menu bar shows")
+            get: { settings.panelGroup(for: provider).flatMap { groups.contains($0) ? $0 : nil } },
+            set: { settings.setPanelGroup($0, for: provider) }),
+                          help: "The \(provider.displayName) model group the panel opens on")
     }
 
     /// A titled card of rows; areas of the app each get one.
@@ -354,11 +307,11 @@ struct SettingsView: View {
         }
     }
 
-    private var divider: some View {
+    var divider: some View {
         Rectangle().fill(Theme.hair).frame(height: 0.5).padding(.leading, 12)
     }
 
-    private func row<Control: View>(_ label: String, @ViewBuilder control: () -> Control) -> some View {
+    func row<Control: View>(_ label: String, @ViewBuilder control: () -> Control) -> some View {
         HStack {
             Text(label)
             Spacer()
@@ -369,32 +322,7 @@ struct SettingsView: View {
     }
 }
 
-/// The status item as the menu bar draws it for one provider: the ring glyph plus the chosen percentage.
-private struct StatusItemPreview: View {
-    let state: ProviderState
-    let rings: MenuBarRings
-    let percent: MenuBarPercent
-    let group: String?
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(nsImage: StatusIcon.image(for: state, rings: rings, group: group))
-                .renderingMode(.template)
-            if let text = StatusIcon.percentText(for: state.snapshot, mode: percent, group: group) {
-                Text(text)
-                    .font(.system(size: 12, weight: .medium))
-                    .monospacedDigit()
-            }
-        }
-        .fixedSize()
-        .foregroundStyle(.white.opacity(0.92))
-        .padding(.horizontal, 5)
-        .frame(height: 22)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color(red: 40 / 255, green: 40 / 255, blue: 60 / 255).opacity(0.65)))
-    }
-}
-
-private extension View {
+extension View {
     /// Toggle chip in the settings strip: filled when selected, a hairline outline otherwise.
     /// `outlined` adds a ring to the selected chip, marking a single pick rather than an on/off toggle.
     func chip(selected: Bool, outlined: Bool = false) -> some View {
@@ -426,7 +354,7 @@ private extension SpendBreakdown {
 }
 
 /// Lays chips out left to right, wrapping to a new line when the row is full.
-private struct FlowLayout: Layout {
+struct FlowLayout: Layout {
     var spacing: CGFloat = 6
 
     private struct Row {

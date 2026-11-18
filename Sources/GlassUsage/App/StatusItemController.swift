@@ -46,8 +46,8 @@ final class StatusItemController: NSObject {
             button.target = self
             button.action = #selector(statusItemClicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.imagePosition = .imageLeading
-            button.setAccessibilityLabel("GlassUsage")
+            // The percentages are drawn into the image, beside their icons.
+            button.imagePosition = .imageOnly
             let tracker = HoverTracker(
                 onEnter: { [weak self] in self?.pointerEnteredStatusItem() },
                 onExit: { [weak self] in self?.hoverOpenTask?.cancel() })
@@ -70,27 +70,11 @@ final class StatusItemController: NSObject {
 
     private func updateButton() {
         guard let button = statusItem.button else { return }
-        let provider = store.menuBarProvider
-        let state = provider.map { store.state(for: $0) }
-        let snapshot = state?.snapshot?.current(at: .now)
-
-        let settings = store.settings
-        let group = provider.flatMap(settings.menuBarGroup)
-        button.image = StatusIcon.image(for: state, rings: settings.menuBarRings, group: group)
-
-        if let percent = StatusIcon.percentText(for: snapshot, mode: settings.menuBarPercent, group: group) {
-            button.attributedTitle = NSAttributedString(
-                string: " \(percent)",
-                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)])
-        } else {
-            button.attributedTitle = NSAttributedString()
-        }
-        button.toolTip = panel.isPresented ? nil : snapshot.map(Self.tooltip) ?? "GlassUsage"
-    }
-
-    private static func tooltip(_ snapshot: ProviderSnapshot) -> String {
-        let parts = snapshot.windows.map { "\($0.group.map { "\($0) " } ?? "")\($0.title) \(Int($0.percent.rounded()))%" }
-        return "\(snapshot.provider.displayName): " + parts.joined(separator: " · ")
+        let icons = store.menuBarIcons()
+        button.image = StatusIcon.image(icons)
+        let description = StatusIcon.description(icons)
+        button.setAccessibilityLabel("GlassUsage: " + description.joined(separator: "; "))
+        button.toolTip = panel.isPresented ? nil : description.joined(separator: "\n")
     }
 
     @objc private func statusItemClicked() {

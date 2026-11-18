@@ -38,7 +38,8 @@ struct UsagePanelView: View {
 
     private func main(now: Date) -> some View {
         let settings = store.settings
-        let providers = settings.enabledProviders
+        // In the menu bar's order, so the provider it leads with heads the panel.
+        let providers = settings.panelProviders
         let summary = SpendSummary(reports: providers.compactMap { store.localReports[$0] }, range: model.range,
                                    unit: settings.spendUnit)
 
@@ -114,7 +115,7 @@ struct LimitsSection: View {
             ForEach(Array(providers.enumerated()), id: \.element) { index, provider in
                 // The first provider's title sits in the panel header.
                 ProviderLimits(provider: provider, state: store.state(for: provider), now: now, showsTitle: index > 0,
-                               preferredGroup: store.settings.menuBarGroup(for: provider))
+                               preferredGroup: store.settings.panelGroup(for: provider))
                     .reveal(after: Motion.step * Double(index + 1))
             }
         }
