@@ -27,6 +27,11 @@ nonisolated enum ClaudeProvider {
         } catch ProviderError.unauthorized(.claude) {
             guard await TokenRenewal.shared.renew() else { throw ProviderError.unauthorized(.claude) }
             return try await fetchUsage(try await loadCredentials())
+        } catch let error as URLError {
+            // Offline: a renewal that just failed most likely failed for the same reason, so it shouldn't hold off
+            // the next one, which would then show a working sign-in as expired.
+            await TokenRenewal.shared.forgetAttempt()
+            throw error
         }
     }
 
@@ -115,6 +120,10 @@ actor TokenRenewal {
         let result = await task.value
         inFlight = nil
         return result
+    }
+
+    func forgetAttempt() {
+        if inFlight == nil { lastAttempt = nil }
     }
 
     private static func runClaudeUsageCommand() async -> Bool {

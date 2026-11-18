@@ -67,7 +67,9 @@ nonisolated enum Shell {
         let stderr: String
     }
 
-    /// Runs a process off the main actor; kills it after `timeout`.
+    /// Runs a process off the main actor. After `timeout` it's asked to quit, then killed. Output is collected as
+    /// it arrives rather than read to the end: a helper the CLI started (a language server, a Node worker) can
+    /// keep the pipes open long after the CLI is gone, and reading to their end would then never return.
     @concurrent
     static func run(_ executable: String, _ arguments: [String], cwd: URL? = nil,
                     environment: [String: String]? = nil, timeout: TimeInterval = 15) async throws -> Output {
@@ -76,26 +78,57 @@ nonisolated enum Shell {
         process.arguments = arguments
         if let cwd { process.currentDirectoryURL = cwd }
         if let environment { process.environment = environment }
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
+        let stdout = PipeReader()
+        let stderr = PipeReader()
+        process.standardOutput = stdout.pipe
+        process.standardError = stderr.pipe
         process.standardInput = FileHandle.nullDevice
-        try process.run()
 
         let watchdog = Task {
             try await Task.sleep(for: .seconds(timeout))
-            if process.isRunning { process.terminate() }
+            guard process.isRunning else { return }
+            process.terminate()
+            try await Task.sleep(for: .seconds(2))
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
         }
-        // Drain both pipes at once so a chatty stderr can't fill its buffer and stall the process.
-        let errorHandle = stderr.fileHandleForReading
-        let errors = Task.detached { errorHandle.readDataToEndOfFile() }
-        let data = stdout.fileHandleForReading.readDataToEndOfFile()
-        let errorData = await errors.value
-        process.waitUntilExit()
-        watchdog.cancel()
-        return Output(status: process.terminationStatus, stdout: String(decoding: data, as: UTF8.self),
-                      stderr: String(decoding: errorData, as: UTF8.self))
+        defer { watchdog.cancel() }
+        try await withCheckedThrowingContinuation { (exited: CheckedContinuation<Void, Error>) in
+            process.terminationHandler = { _ in exited.resume() }
+            do { try process.run() } catch { exited.resume(throwing: error) }
+        }
+        // The pipes close as the process exits, unless something it started still holds them: wait a second at most.
+        var waited = 0
+        while !(stdout.isAtEnd && stderr.isAtEnd), waited < 20 {
+            try? await Task.sleep(for: .milliseconds(50))
+            waited += 1
+        }
+        return Output(status: process.terminationStatus, stdout: String(decoding: stdout.finish(), as: UTF8.self),
+                      stderr: String(decoding: stderr.finish(), as: UTF8.self))
+    }
+
+    /// Collects a pipe's output as it arrives, until its end or until `finish`.
+    private final class PipeReader: @unchecked Sendable {
+        let pipe = Pipe()
+        private let lock = NSLock()
+        private var data = Data()
+        private var ended = false
+
+        init() {
+            pipe.fileHandleForReading.readabilityHandler = { [self] handle in
+                let chunk = handle.availableData
+                lock.withLock {
+                    if chunk.isEmpty { ended = true } else { data.append(chunk) }
+                }
+                if chunk.isEmpty { handle.readabilityHandler = nil }
+            }
+        }
+
+        var isAtEnd: Bool { lock.withLock { ended } }
+
+        func finish() -> Data {
+            pipe.fileHandleForReading.readabilityHandler = nil
+            return lock.withLock { data }
+        }
     }
 
     /// Resolves a CLI the way the user's terminal would (nvm, Homebrew, ~/.local/bin…). Remembered, so the

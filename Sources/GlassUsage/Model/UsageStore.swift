@@ -1,4 +1,5 @@
 import AppKit
+import Network
 import Observation
 
 @Observable
@@ -18,6 +19,8 @@ final class UsageStore {
     /// Providers the usage service rate limited: when to ask again, and how many limits in a row.
     @ObservationIgnored private var backoff: [ProviderID: (until: Date, strikes: Int)] = [:]
     @ObservationIgnored private var wakeObserver: NSObjectProtocol?
+    @ObservationIgnored private let pathMonitor = NWPathMonitor()
+    @ObservationIgnored private var isOnline: Bool?
     private static let snapshotsKey = "lastSnapshots"
 
     init(settings: AppSettings) {
@@ -29,6 +32,17 @@ final class UsageStore {
             // Readings from before the sleep are stale; give the network a moment to come back first.
             MainActor.assumeIsolated { self?.start(after: .seconds(5)) }
         }
+        // Waking often beats the network back by more than those 5 s; refresh again once it's up, rather than
+        // leaving the failed readings until the next interval.
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let online = path.status == .satisfied
+                defer { self.isOnline = online }
+                if online, self.isOnline == false { self.start(after: .seconds(2)) }
+            }
+        }
+        pathMonitor.start(queue: .main)
     }
 
     func state(for provider: ProviderID) -> ProviderState {
@@ -64,7 +78,9 @@ final class UsageStore {
             try? await Task.sleep(for: delay)
             while !Task.isCancelled {
                 guard let self else { return }
-                await self.refresh()
+                // Its own task, so restarting the loop (wake, a new interval) doesn't cancel a refresh mid-request
+                // and show its providers as failed.
+                await Task { await self.refresh() }.value
                 try? await Task.sleep(for: .seconds(self.nextRefreshDelay()))
             }
         }
