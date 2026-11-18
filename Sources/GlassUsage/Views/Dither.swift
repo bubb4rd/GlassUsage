@@ -64,19 +64,33 @@ extension GraphicsContext {
 
 /// Draws `paint` twice: blurred underneath as a glow (added light in dark mode, a faint halo in light), then sharp.
 /// `paint`'s last argument is true for the glow pass, which leaves out what shouldn't glow: unlit dots, tints.
+/// `paint` gets the view's own size; the canvases reach `bleed` past it on every side, since a Canvas clips at its
+/// bounds and cut the ring's outer cells, which straddle its frame, flat at the top, bottom and sides.
 struct DitherCanvas: View {
     var glow: CGFloat = 3
     let paint: (GraphicsContext, CGSize, Bool) -> Void
 
     @Environment(\.colorScheme) private var scheme
 
+    /// Room for cells over the frame's edge and their glow.
+    private var bleed: CGFloat { 4 + glow * 3 }
+
     var body: some View {
         ZStack {
-            Canvas { context, size in paint(context, size, true) }
+            layer(glow: true)
                 .blur(radius: glow)
                 .opacity(scheme == .dark ? 0.85 : 0.3)
                 .blendMode(scheme == .dark ? .plusLighter : .normal)
-            Canvas { context, size in paint(context, size, false) }
+            layer(glow: false)
+        }
+        .padding(-bleed)
+    }
+
+    private func layer(glow: Bool) -> some View {
+        Canvas { [bleed] context, size in
+            var context = context
+            context.translateBy(x: bleed, y: bleed)
+            paint(context, CGSize(width: size.width - 2 * bleed, height: size.height - 2 * bleed), glow)
         }
     }
 }
