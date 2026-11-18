@@ -3,8 +3,8 @@ import Observation
 import SwiftUI
 
 /// Owns the menu bar item and the glass panel that drops down from it.
-/// Click toggles the panel; with "Open on hover" the panel also peeks on hover and
-/// dismisses when the pointer leaves, until a click pins it open.
+/// Click toggles the panel; with "Open on hover" it also opens on hover. However it opened and whatever it shows,
+/// the panel closes shortly after the pointer moves away from it and the icon.
 final class StatusItemController: NSObject {
     private let store: UsageStore
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -15,8 +15,10 @@ final class StatusItemController: NSObject {
     private var keyMonitor: Any?
     private var hoverTracker: HoverTracker?
     private var hoverOpenTask: Task<Void, Never>?
-    private var hoverWatch: Timer?
-    private var pointerLeftAt: Date?
+    private var leaveWatch: Timer?
+    private var pointerLeftAt: CFTimeInterval?
+    /// Opened by hover and not clicked since: a click on the icon then keeps it open instead of closing it,
+    /// since it was most likely aimed at opening it.
     private var openedByHover = false
     private var anchor = NSPoint.zero
 
@@ -94,7 +96,7 @@ final class StatusItemController: NSObject {
         }
         hoverOpenTask?.cancel()
         if panel.isPresented {
-            if openedByHover { pin() } else { hidePanel() }
+            if openedByHover { openedByHover = false } else { hidePanel() }
         } else {
             showPanel(byHover: false)
         }
@@ -136,36 +138,47 @@ final class StatusItemController: NSObject {
         }
     }
 
-    private func pin() {
-        openedByHover = false
-        stopHoverWatch()
-    }
+    // MARK: Leaving
 
-    /// Hover-opened panels close shortly after the pointer leaves both the icon and the panel.
-    private func startHoverWatch() {
-        stopHoverWatch()
+    /// Room around the panel and icon the pointer can stray into, on top of the panel's transparent shadow insets.
+    private static let leaveMargin: CGFloat = 10
+    /// How long the pointer has to stay away before the panel closes, so a slip past the edge doesn't.
+    private static let leaveGrace: CFTimeInterval = 0.3
+
+    /// Polls rather than tracking areas so a panel resizing under a still pointer counts too. The timer runs only in
+    /// the default run loop mode, so it waits while a menu from the panel is open or a control is being clicked.
+    private func startLeaveWatch() {
+        stopLeaveWatch()
         pointerLeftAt = nil
-        hoverWatch = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkHoverPointer() }
+        leaveWatch = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkPointer() }
         }
     }
 
-    private func checkHoverPointer() {
-        guard openedByHover, panel.isPresented else { return stopHoverWatch() }
-        let pointer = NSEvent.mouseLocation
-        let zone = panel.frame.union(statusButtonScreenRect()).insetBy(dx: -10, dy: -10)
-        if zone.contains(pointer) {
+    private func checkPointer() {
+        guard panel.isPresented else { return stopLeaveWatch() }
+        // A held button is a drag (or a click) in progress; closing mid-drag would drop it.
+        if pointerIsNearPanel() || NSEvent.pressedMouseButtons != 0 {
             pointerLeftAt = nil
         } else if let left = pointerLeftAt {
-            if Date.now.timeIntervalSince(left) > 0.35 { hidePanel() }
+            if CACurrentMediaTime() - left >= Self.leaveGrace { hidePanel() }
         } else {
-            pointerLeftAt = .now
+            pointerLeftAt = CACurrentMediaTime()
         }
     }
 
-    private func stopHoverWatch() {
-        hoverWatch?.invalidate()
-        hoverWatch = nil
+    /// Over the panel, the icon, the gap between them, or another of GlassUsage's windows (the Privacy popover
+    /// hangs off the panel in a window of its own).
+    private func pointerIsNearPanel() -> Bool {
+        let pointer = NSEvent.mouseLocation
+        let margin = Self.leaveMargin
+        if panel.frame.union(statusButtonScreenRect()).insetBy(dx: -margin, dy: -margin).contains(pointer) { return true }
+        return NSApp.windows.contains { $0.isVisible && $0.frame.insetBy(dx: -margin, dy: -margin).contains(pointer) }
+    }
+
+    private func stopLeaveWatch() {
+        leaveWatch?.invalidate()
+        leaveWatch = nil
     }
 
     // MARK: Panel
@@ -187,14 +200,14 @@ final class StatusItemController: NSObject {
         statusItem.button?.highlight(true)
         statusItem.button?.toolTip = nil
 
-        if byHover { startHoverWatch() }
+        startLeaveWatch()
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated { self?.hidePanel() }
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] event in
             guard let self else { return event }
-            if event.type == .leftMouseDown, event.window === self.panel, self.openedByHover {
-                self.pin()
+            if event.type == .leftMouseDown, event.window === self.panel {
+                self.openedByHover = false
             }
             guard event.type == .keyDown else { return event }
             if event.keyCode == 53 { // Escape: leave Settings first, then close.
@@ -215,7 +228,7 @@ final class StatusItemController: NSObject {
     private func hidePanel() {
         guard panel.isPresented else { return }
         panelModel.revealed = false
-        stopHoverWatch()
+        stopLeaveWatch()
         openedByHover = false
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
