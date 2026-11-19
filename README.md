@@ -20,7 +20,7 @@
   <a href="#faq">FAQ</a>
 </p>
 
-<p align="center"><img src="docs/hero-panels.jpg" alt="GlassUsage panels up close at an angle: Antigravity's rings on their own, limits and spend for Claude, Codex and Antigravity in solid and dither fills, and Settings editing a Duo menu bar ring"></p>
+<p align="center"><img src="docs/hero-themes.jpg" alt="GlassUsage panels up close at an angle: Antigravity's rings on their own, limits and spend for Claude, Codex and Antigravity solid in the Catppuccin theme and dithered in Acid, and Settings editing a Duo menu bar ring"></p>
 
 GlassUsage is a native Liquid Glass menu bar app for macOS. It shows how much of each AI plan's session and weekly limits you've used and when each resets, across every provider you sign in to, so you're never surprised mid-task. Optionally, it shows the tokens you've burned and what they would cost at API prices.
 
