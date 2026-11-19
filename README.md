@@ -10,13 +10,13 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-fad318"></a>
 </p>
 
-<p align="center">Your Claude, Codex, Antigravity and Muse Code plan limits, plus the tokens you burn, one click away in the menu bar.</p>
+<p align="center">Your AI coding plan limits, plus the tokens you burn, one click away in the menu bar.</p>
 
 <p align="center"><img src="docs/hero-panels.jpg" alt="GlassUsage panels up close at an angle: Antigravity's rings on their own, limits and spend for Claude, Codex and Antigravity in solid and dither fills, and Settings editing a Duo menu bar ring"></p>
 
-GlassUsage is a native Liquid Glass menu bar app for macOS. It shows how much of your session and weekly limits you've used and when each one resets, so you're never surprised mid-task. Optionally, it also shows how many tokens you've burned and what they would cost at API prices.
+GlassUsage is a native Liquid Glass menu bar app for macOS. It shows how much of each AI plan's session and weekly limits you've used and when each one resets, across every provider you sign in to, so you're never surprised mid-task. Optionally, it also shows how many tokens you've burned and what they would cost at API prices.
 
-It has no account or server of its own: it reuses the sign-ins your coding CLIs already keep on your Mac, and it never stores your credentials.
+It has no account or server of its own: it reuses the sign-ins your coding tools already keep on your Mac, and it never stores your credentials. See [Supported providers](#supported-providers) for what works today.
 
 ## Install
 
@@ -42,12 +42,7 @@ shasum -a 256 -c GlassUsage-*.zip.sha256    # prints "GlassUsage-<version>.zip: 
 
 ### Before you start
 
-GlassUsage reads limits from the tools you already use. Sign in to at least one:
-
-- **Claude Code:** run `claude` and sign in with a Pro, Max, Team or Enterprise plan.
-- **Codex CLI:** run `codex` and sign in with ChatGPT.
-- **Antigravity CLI:** run `agy` and sign in with your Google account.
-- **Muse Code:** run `muse login` with a Muse Code subscription.
+GlassUsage reads limits from the tools you already use. Sign in to at least one [supported provider](#supported-providers) with its own CLI, and GlassUsage picks it up on launch.
 
 ### Updating
 
@@ -61,21 +56,34 @@ Quit GlassUsage (right-click the icon → Quit) and delete it from Applications,
 
 ## Features
 
-- **Session and weekly limits:** a ring per window, with the time until it resets and the exact reset time. Codex plans with a monthly window show that instead. Antigravity meters each model group (Gemini, Claude and GPT, Argon) separately: arrows above its rings step between groups, starting on the one closest to its limit, or on the group picked under *Antigravity models* in Settings. Rings turn yellow at 50%, orange at 75% and red at 90%. Providers are listed in the order the menu bar shows them.
+- **Session and weekly limits:** a ring per window, with the time until it resets and the exact reset time. Plans with a monthly window show that instead. Providers that meter model groups separately get arrows above their rings to step between groups, starting on the one closest to its limit, or on the group picked in Settings. Rings turn yellow at 50%, orange at 75% and red at 90%. Providers are listed in the order the menu bar shows them.
 - **Pace:** a faint arc ahead of each ring's fill shows where the window ends at your current pace. When that pace runs it out before the reset, the ring warms one color step past its usage (a ring at 36% turns yellow, not red). Hover a ring to see when it hits 100%, or where it lands when it resets.
 - **Menu bar at a glance:** by default two rings, the session inside and the week outside, with the percentage of whichever is closer to running out. Under *Rings* in Settings, pick a layout drawn as it would look in your menu bar: **Classic** (one provider), **Duo** (two providers' weeks in one icon, one ring inside the other) or **Side by side** (an icon per provider, up to three). Click a ring below the layouts to point it at any tracked provider and its session, week, or whichever window is closer to its limit. **+** adds a ring or an icon, and hovering one shows an **×** to remove it. Each icon has its own percentage. Your edits are kept as **Custom**, so trying a preset doesn't lose them. A ring dims on its own when its provider's reading is stale or failed. Hover the menu bar item to see which ring is which.
 - **Token spend** (toggle with **$**): what today, the last 7 days or the last 30 days would cost at API prices, a bar per day with your daily average, the tokens, cache reads and output behind it, and your top models, projects or sources by cost, each with its tokens and share. Projects are the git repository each session ran in, so a subfolder, worktree or submodule counts toward its repository's top folder, shown with the project's own app icon, logo or favicon when its folder has one. For projects in Documents, Desktop, Downloads, cloud storage or external drives, logos and repository lookup need *Projects in Documents & Desktop* in Settings, or *Read projects in Documents & Desktop* under the projects, since macOS asks before an app reads those folders. Pick in Settings what it *Shows*: *Value* (dollars lead) or *Tokens* (token counts lead and the lists rank by them, with the dollars beside), how days are drawn: *Ledger* (a bar per day) or *Calendar* (weeks by weekday, with weekly totals), their *Colors*: *Graphite* (gray steps, the default for new installs), *Providers* (each provider's brand color, kept when you update from an earlier version) or *Neon* (brighter colors set further apart), and which *Lists* sit under the chart: any of models, projects and sources, or none.
 - **Spend bar and dither:** with more than one provider, a bar splits the range's spend between them, each listed with its total; hover a slice or a name to pick it out. *Fill* in Settings draws the rings, spend bar, day chart and list bars solid or as a dot-matrix dither that glows in dark mode, sweeps in white-hot, and scans across the empty bar while logs are first read.
 - **Limit alerts:** pick 50%, 75% or 90% in Settings and get a notification when any tracked limit reaches it, and another when that window resets. Off by default.
-- **Reads local logs:** spend comes from Claude Code, Codex CLI, Antigravity (its CLI, desktop app, IDE or T3 Code), Muse Code and omp session logs, parsed incrementally like [ccusage](https://github.com/ryoppippi/ccusage).
+- **Reads local logs:** spend comes from your coding tools' session logs on this Mac, parsed incrementally like [ccusage](https://github.com/ryoppippi/ccusage). Each provider's sources are listed under [Supported providers](#supported-providers).
 - **Out of your way:** click to open, or turn on *Open on hover* to peek. Moving the pointer away closes it. ⌘R refreshes, ⌘, opens Settings, Esc closes.
 - **Launch at login**, a selectable refresh interval, and automatic updates.
 
+## Supported providers
+
+| Provider | Plan limits | Read via | Token spend from | Sign in with |
+|---|---|---|---|---|
+| Claude | Session · Weekly | API | Claude Code | `claude` |
+| Codex | Session · Weekly · Monthly | API | Codex CLI | `codex` |
+| Antigravity | Session · Weekly · Model groups | CLI | Antigravity CLI, app, IDE, T3 Code | `agy` |
+| Muse Code | Session · Weekly | CLI | Muse Code | `muse login` |
+
+**API:** GlassUsage asks the provider's usage service with the login its tool already keeps. **CLI:** it asks the provider's own command-line tool, so it never sees the login. Plan limits need a subscription sign-in; API-key logins have no limits to show.
+
+Sessions run through omp count toward the provider they used. Want another provider? [Open an issue](https://github.com/bubb4rd/GlassUsage/issues) with the tool you use and how it reports usage.
+
 ## Privacy
 
-- **Credentials:** read from Claude Code's Keychain item and Codex's `auth.json`. Antigravity and Muse Code limits come from their own CLIs (`agy -p /usage`, `muse usage`), so GlassUsage never sees those logins. It never stores, refreshes or rewrites credentials.
+- **Credentials:** GlassUsage reuses the sign-in each provider's own tool keeps (see [Supported providers](#supported-providers)), or asks that tool's CLI for usage so it never sees the login at all. It never stores, refreshes or rewrites credentials.
 - **Logs:** your session logs are read on your Mac and never uploaded.
-- **Network:** only Anthropic and OpenAI (for your limits) and GitHub (for prices and updates); the Antigravity and Muse Code CLIs make their own requests. No analytics or telemetry.
+- **Network:** only the providers' usage endpoints (for your limits) and GitHub (for prices and updates); providers read through their CLIs make their own requests. No analytics or telemetry.
 
 See [How it works](docs/how-it-works.md) for the exact endpoints, files and formulas.
 
@@ -85,10 +93,10 @@ See [How it works](docs/how-it-works.md) for the exact endpoints, files and form
 Spend shows what the same tokens would cost on the pay-per-token API. Your plan doesn't bill per token. Treat it as a way to compare days and models, not as a bill.
 
 **A provider shows "Sign in with…" instead of rings.**
-Sign in with `claude`, `codex`, `agy` or `muse login` in Terminal, then click refresh (⌘R).
+Sign in with that provider's CLI in Terminal (the command is under [Supported providers](#supported-providers)), then click refresh (⌘R).
 
 **Is this official?**
-No. GlassUsage is an independent project and is not affiliated with Anthropic, OpenAI, Google or Meta. It uses the same undocumented usage endpoints and commands as the official CLIs, and those can change. Updates will follow when they do.
+No. GlassUsage is an independent project and is not affiliated with any of the providers it supports. It uses the same undocumented usage endpoints and commands as their official tools, and those can change. Updates will follow when they do.
 
 ## Build from source
 
@@ -106,7 +114,7 @@ Maintainers: see [Releasing](docs/releasing.md).
 
 ## Contributing
 
-Bug reports and pull requests are welcome. Please include your macOS version and which provider (Claude, Codex, Antigravity or Muse Code) is involved. To report a security issue, see [SECURITY.md](SECURITY.md).
+Bug reports and pull requests are welcome. Please include your macOS version and which provider is involved. To report a security issue, see [SECURITY.md](SECURITY.md).
 
 ## Credits
 
