@@ -515,16 +515,12 @@ struct SpendPalette {
     let providers: [ProviderID]
 
     /// Gray steps by stack position for one to four providers, spread as far apart as the count allows.
-    private static let grays: [[Double]] = [[0.8], [0.8, 0.38], [0.85, 0.55, 0.3], [0.85, 0.62, 0.42, 0.24]]
+    static let grays: [[Double]] = [[0.8], [0.8, 0.38], [0.85, 0.55, 0.3], [0.85, 0.62, 0.42, 0.24]]
 
     func color(for provider: ProviderID) -> Color {
-        switch style {
-        case .providers, .neon:
-            return Theme.color(for: provider, in: style)
-        case .graphite:
-            let steps = Self.grays[min(max(providers.count, 1), Self.grays.count) - 1]
-            return Color.primary.opacity(steps[min(providers.firstIndex(of: provider) ?? 0, steps.count - 1)])
-        }
+        guard style == .graphite else { return Theme.color(for: provider, in: style) }
+        let steps = Self.grays[min(max(providers.count, 1), Self.grays.count) - 1]
+        return Color.primary.opacity(steps[min(providers.firstIndex(of: provider) ?? 0, steps.count - 1)])
     }
 
     var output: Color { style == .graphite ? Color.primary.opacity(0.8) : Theme.s2 }

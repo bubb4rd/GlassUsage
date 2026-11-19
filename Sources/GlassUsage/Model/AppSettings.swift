@@ -114,12 +114,15 @@ final class AppSettings {
         showSpend = defaults.bool(forKey: Keys.spend)
         spendView = SpendView(rawValue: defaults.string(forKey: Keys.spendView) ?? "") ?? .ledger
         // Graphite for new installs. A Mac that has run GlassUsage before (its support folder holds the price
-        // list and log cache) keeps the provider colors it had. Stored now so the choice holds on later launches.
+        // list and log cache) keeps provider colors, now Catppuccin, which replaced the old brand colors
+        // ("providers"). Stored now so the choice holds on later launches.
         let colors: SpendColors
-        if let stored = SpendColors(rawValue: defaults.string(forKey: Keys.spendColors) ?? "") {
+        let storedColors = defaults.string(forKey: Keys.spendColors)
+        if let stored = SpendColors(rawValue: storedColors ?? "") {
             colors = stored
         } else {
-            colors = fm.fileExists(atPath: AppPaths.supportDirectory.path) ? .providers : .graphite
+            let hadProviders = storedColors == "providers" || fm.fileExists(atPath: AppPaths.supportDirectory.path)
+            colors = hadProviders ? .catppuccin : .graphite
             defaults.set(colors.rawValue, forKey: Keys.spendColors)
         }
         spendColors = colors
@@ -228,15 +231,20 @@ enum SpendView: String, CaseIterable {
 }
 
 /// How the spend charts tell providers apart. Graphite: gray steps, so color on the panel only marks limits.
-/// Providers: each provider's brand color. Neon: brighter colors set further apart, which suit the dither fill.
+/// The rest give each provider its own color: Catppuccin's pastels, Neon's bright colors set far apart for the
+/// dither, Pantone's colors of the year, Memphis' 80s Milano brights, Matisse's paper cut-outs, and Acid's rave.
 enum SpendColors: String, CaseIterable {
-    case graphite, providers, neon
+    case graphite, catppuccin, neon, pantone, memphis, matisse, acid
 
     var label: String {
         switch self {
         case .graphite: "Graphite"
-        case .providers: "Providers"
+        case .catppuccin: "Catppuccin"
         case .neon: "Neon"
+        case .pantone: "Pantone"
+        case .memphis: "Memphis"
+        case .matisse: "Matisse"
+        case .acid: "Acid"
         }
     }
 }

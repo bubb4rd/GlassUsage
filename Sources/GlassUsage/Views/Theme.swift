@@ -24,21 +24,32 @@ enum Theme {
     static let critical = dynamic(0xD03B3B, 0xE66767)
 
     /// Identity color per provider in a color theme, for chart stacks, the spend bar and list bars (graphite is
-    /// drawn by `SpendPalette`). Providers: each brand's own hue, Claude's clay, OpenAI's silver, Google blue
-    /// and Meta violet. Neon: brighter and further apart, made to glow in dither. Neither uses green, which
-    /// marks a limit with room left.
+    /// drawn by `SpendPalette`). Each theme has a light and a dark color per provider, deeper on light glass so
+    /// sparse dither cells still read, brighter on dark where they glow.
     static func color(for provider: ProviderID, in colors: SpendColors) -> Color {
-        (colors == .neon ? neon : brand)[provider]!
+        Color(nsColor: nsColor(for: provider, in: colors))
     }
 
-    private static let brand: [ProviderID: Color] = [
-        .claude: dynamic(0xC4623F, 0xE08360), .codex: dynamic(0x55585F, 0xC9CDD6),
-        .antigravity: dynamic(0x1A73E8, 0x4F8FF7), .muse: dynamic(0x8A3FFC, 0xAC7BFF),
+    /// `color(for:in:)` for AppKit drawing, resolved by the appearance it's drawn in. Not for graphite.
+    static func nsColor(for provider: ProviderID, in colors: SpendColors) -> NSColor {
+        palettes[colors]![provider]!
+    }
+
+    private static let palettes: [SpendColors: [ProviderID: NSColor]] = [
+        .catppuccin: palette((0xFE640B, 0xFAB387), (0x40A02B, 0xA6E3A1), (0x209FB5, 0x74C7EC), (0x8839EF, 0xCBA6F7)),
+        .neon: palette((0xE2580F, 0xFF7A3D), (0x2563EB, 0x4C8DFF), (0x0891B2, 0x2ED3F0), (0xD12677, 0xFF4FB0)),
+        .pantone: palette((0xF2584A, 0xFF8478), (0x0F4C81, 0x5B95D6), (0x6E9A35, 0xA3CC5E), (0xBB2649, 0xE04A72)),
+        .memphis: palette((0xE0A800, 0xFFD100), (0x3347E6, 0x6B7BFF), (0x009A92, 0x20D6CB), (0xE8378C, 0xFF5CA8)),
+        .matisse: palette((0xE5532C, 0xFF7A55), (0xD9A400, 0xFFD54A), (0x1F3FA8, 0x5B7CF0), (0x2F8A4A, 0x4CC170)),
+        .acid: palette((0xE04000, 0xFF5A1F), (0x6F9000, 0xC6FF00), (0x0092B0, 0x00E5FF), (0x5A12E0, 0x8F4DFF)),
     ]
-    private static let neon: [ProviderID: Color] = [
-        .claude: dynamic(0xE2580F, 0xFF7A3D), .codex: dynamic(0x2563EB, 0x4C8DFF),
-        .antigravity: dynamic(0x0891B2, 0x2ED3F0), .muse: dynamic(0xD12677, 0xFF4FB0),
-    ]
+
+    /// (light, dark) per provider.
+    private static func palette(_ claude: (UInt32, UInt32), _ codex: (UInt32, UInt32), _ antigravity: (UInt32, UInt32),
+                                _ muse: (UInt32, UInt32)) -> [ProviderID: NSColor] {
+        [.claude: dynamicNS(claude.0, claude.1), .codex: dynamicNS(codex.0, codex.1),
+         .antigravity: dynamicNS(antigravity.0, antigravity.1), .muse: dynamicNS(muse.0, muse.1)]
+    }
 
     /// Ordered by severity, so `max` picks the worse of two.
     enum Band: Comparable {
@@ -87,13 +98,17 @@ enum Theme {
     }
 
     private static func dynamic(_ light: UInt32, _ dark: UInt32) -> Color {
+        Color(nsColor: dynamicNS(light, dark))
+    }
+
+    private static func dynamicNS(_ light: UInt32, _ dark: UInt32) -> NSColor {
         func nsColor(_ hex: UInt32) -> NSColor {
             NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
                     blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
         }
-        return Color(nsColor: NSColor(name: nil) { appearance in
+        return NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? nsColor(dark) : nsColor(light)
-        })
+        }
     }
 }
 

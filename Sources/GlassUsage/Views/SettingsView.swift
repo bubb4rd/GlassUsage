@@ -61,11 +61,10 @@ struct SettingsView: View {
                     }
                     divider
                     row("Colors") {
-                        PillPicker(options: SpendColors.allCases.map { ($0, $0.label) }, selection: $settings.spendColors) {
-                            swatch($0)
-                        }
+                        menuPicker(SpendColors.allCases.map { ($0, $0.label) }, selection: $settings.spendColors,
+                                   help: "How the spend charts tell providers apart: gray steps or a color palette",
+                                   menuImage: swatchImage) { swatch($0) }
                     }
-                    .help("How the spend charts tell providers apart: gray steps, each provider's brand color, or neon")
                     divider
                     row("Fill") {
                         PillPicker(options: ChartFill.allCases.map { ($0, $0.label) }, selection: $settings.chartFill)
@@ -204,11 +203,22 @@ struct SettingsView: View {
     /// AppKit's: SwiftUI's `Menu` shows its items disabled in this non-activating panel, so nothing could be picked.
     func menuPicker<Value: Hashable>(_ options: [(value: Value, label: String)], selection: Binding<Value>,
                                      help: String) -> some View {
+        menuPicker(options, selection: selection, help: help, menuImage: { _ in nil }) { _ in EmptyView() }
+    }
+
+    /// `menuPicker` with a picture of each option: `icon` in front of the chosen one's label, `menuImage` beside
+    /// each item in the menu.
+    func menuPicker<Value: Hashable, Icon: View>(_ options: [(value: Value, label: String)], selection: Binding<Value>,
+                                                 help: String, menuImage: @escaping (Value) -> NSImage?,
+                                                 @ViewBuilder icon: (Value) -> Icon) -> some View {
         let selected = options.firstIndex { $0.value == selection.wrappedValue }
         return Button {
-            OptionMenu.popUp(options.map(\.label), selected: selected) { selection.wrappedValue = options[$0].value }
+            OptionMenu.popUp(options.map { ($0.label, menuImage($0.value)) }, selected: selected) {
+                selection.wrappedValue = options[$0].value
+            }
         } label: {
             HStack(spacing: 5) {
+                icon(selection.wrappedValue)
                 Text(selected.map { options[$0].label } ?? "")
                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -228,14 +238,39 @@ struct SettingsView: View {
         .accessibilityValue(selected.map { options[$0].label } ?? "")
     }
 
-    /// The spend chart's providers as a short stack in `colors`, so each option shows what it looks like.
+    /// The four providers as stripes in `colors`, so each option shows its palette; graphite's gray steps are
+    /// parted by a hairline, as in its charts.
     private func swatch(_ colors: SpendColors) -> some View {
         let palette = SpendPalette(style: colors, providers: ProviderID.allCases)
-        return HStack(spacing: colors == .graphite ? 1 : 0) {
-            ForEach(ProviderID.allCases) { Rectangle().fill(palette.color(for: $0)).frame(width: 3) }
+        return HStack(spacing: colors == .graphite ? Swatch.gap : 0) {
+            ForEach(ProviderID.allCases) { Rectangle().fill(palette.color(for: $0)).frame(width: Swatch.stripe) }
         }
-        .frame(height: 9)
-        .clipShape(RoundedRectangle(cornerRadius: 2))
+        .frame(height: Swatch.height)
+        .clipShape(RoundedRectangle(cornerRadius: Swatch.radius))
+    }
+
+    /// `swatch` for the Colors menu. AppKit draws it when the menu shows, so the colors match the menu's appearance.
+    private func swatchImage(_ colors: SpendColors) -> NSImage {
+        let fills = colors == .graphite
+            ? SpendPalette.grays[ProviderID.allCases.count - 1].map { NSColor.labelColor.withAlphaComponent($0) }
+            : ProviderID.allCases.map { Theme.nsColor(for: $0, in: colors) }
+        let gap = colors == .graphite ? Swatch.gap : 0
+        let size = NSSize(width: CGFloat(fills.count) * Swatch.stripe + CGFloat(fills.count - 1) * gap, height: Swatch.height)
+        return NSImage(size: size, flipped: false) { rect in
+            NSBezierPath(roundedRect: rect, xRadius: Swatch.radius, yRadius: Swatch.radius).addClip()
+            for (index, fill) in fills.enumerated() {
+                fill.setFill()
+                NSRect(x: CGFloat(index) * (Swatch.stripe + gap), y: 0, width: Swatch.stripe, height: rect.height).fill()
+            }
+            return true
+        }
+    }
+
+    private enum Swatch {
+        static let stripe: CGFloat = 4
+        static let gap: CGFloat = 1
+        static let height: CGFloat = 11
+        static let radius: CGFloat = 2.5
     }
 
     // MARK: Chips
@@ -407,13 +442,14 @@ struct FlowLayout: Layout {
 /// The settings dropdowns' menu, popped up under the pointer with the current choice beneath it, as a pop-up
 /// button opens.
 private enum OptionMenu {
-    static func popUp(_ labels: [String], selected: Int?, choose: @escaping (Int) -> Void) {
+    static func popUp(_ items: [(label: String, image: NSImage?)], selected: Int?, choose: @escaping (Int) -> Void) {
         let handler = Handler(choose: choose)
         let menu = NSMenu()
-        for (index, label) in labels.enumerated() {
-            let item = NSMenuItem(title: label, action: #selector(Handler.pick(_:)), keyEquivalent: "")
+        for (index, option) in items.enumerated() {
+            let item = NSMenuItem(title: option.label, action: #selector(Handler.pick(_:)), keyEquivalent: "")
             item.target = handler
             item.tag = index
+            item.image = option.image
             item.state = index == selected ? .on : .off
             menu.addItem(item)
         }
