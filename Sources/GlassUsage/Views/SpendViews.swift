@@ -788,18 +788,19 @@ private struct ProviderShare: View {
             ForEach(rows.indices, id: \.self) { row in
                 GridRow {
                     ForEach(rows[row], id: \.provider) { item in
-                        HStack(spacing: 7) {
-                            HStack(spacing: 5) {
-                                RoundedRectangle(cornerRadius: 2.5)
+                        // Tight spacing: with the swatch, "Antigravity" and its figure still fit half the panel.
+                        HStack(spacing: 6) {
+                            HStack(spacing: 4) {
+                                RoundedRectangle(cornerRadius: 2)
                                     .fill(palette.color(for: item.provider))
-                                    .frame(width: 8, height: 8)
+                                    .frame(width: 7, height: 7)
                                 ProviderLogo(provider: item.provider, size: 12).frame(width: 14)
                             }
                             Text(item.provider.displayName).fontWeight(.medium).lineLimit(1)
-                            Spacer(minLength: 4)
+                            Spacer(minLength: 2)
                             Text(figure(item.value, byCost: byCost)).foregroundStyle(.secondary)
                         }
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 5)
                         .frame(height: 24)
                         .background(RoundedRectangle(cornerRadius: 6).fill(hovered == item.provider ? Theme.fill1 : .clear))
                         .opacity(hovered == nil || hovered == item.provider ? 1 : 0.45)
@@ -814,7 +815,7 @@ private struct ProviderShare: View {
         }
         .font(.system(size: 12))
         .monospacedDigit()
-        .padding(.horizontal, -6)
+        .padding(.horizontal, -5)
         .animation(.easeOut(duration: 0.15), value: hovered)
     }
 
