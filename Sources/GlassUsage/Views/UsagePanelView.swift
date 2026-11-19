@@ -16,7 +16,8 @@ struct UsagePanelView: View {
         TimelineView(.periodic(from: .now, by: 15)) { context in
             Group {
                 if model.showingSettings {
-                    SettingsView(store: store, updater: updater, onBack: { model.showingSettings = false }, onQuit: onQuit)
+                    SettingsView(store: store, updater: updater, menuBarHidden: model.menuBarItemHidden,
+                                 onBack: { model.showingSettings = false }, onQuit: onQuit)
                 } else {
                     main(now: context.date)
                 }

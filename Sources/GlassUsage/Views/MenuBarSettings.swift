@@ -24,6 +24,17 @@ extension SettingsView {
             ringTiles(tracked: tracked)
             divider
             ringButtons(tracked: tracked)
+            if menuBarHidden {
+                Label("Your menu bar is too full to show this. Try fewer icons or turn percentages off.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .symbolRenderingMode(.multicolor)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                    .transition(.opacity)
+            }
             if let picked = selection(in: store.settings.menuBarLayout) {
                 ringInspector(tracked: tracked, icon: picked.icon, slot: picked.slot)
             }

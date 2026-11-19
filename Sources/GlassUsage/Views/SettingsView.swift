@@ -6,6 +6,8 @@ import SwiftUI
 struct SettingsView: View {
     let store: UsageStore
     let updater: Updater
+    /// macOS isn't showing the menu bar item, which the ring editor warns about.
+    let menuBarHidden: Bool
     let onBack: () -> Void
     let onQuit: () -> Void
 

@@ -56,6 +56,12 @@ final class StatusItemController: NSObject {
             hoverTracker = tracker
         }
         observeStore()
+        // macOS drops status items that don't fit beside the notch without telling the app; Settings warns instead.
+        for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMoveNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: statusItem.button?.window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.checkItemFits() }
+            }
+        }
     }
 
     // MARK: Menu bar button
@@ -75,6 +81,18 @@ final class StatusItemController: NSObject {
         let description = StatusIcon.description(icons)
         button.setAccessibilityLabel("GlassUsage: " + description.joined(separator: "; "))
         button.toolTip = panel.isPresented ? nil : description.joined(separator: "\n")
+        // The menu bar lays the item out after its image changes.
+        DispatchQueue.main.async { [weak self] in self?.checkItemFits() }
+    }
+
+    /// Whether macOS shows the item: one that doesn't fit is either not drawn or left under the notch.
+    private func checkItemFits() {
+        guard let window = statusItem.button?.window else { return }
+        var hidden = !window.occlusionState.contains(.visible)
+        if !hidden, let right = window.screen?.auxiliaryTopRightArea {
+            hidden = window.frame.minX < right.minX
+        }
+        if panelModel.menuBarItemHidden != hidden { panelModel.menuBarItemHidden = hidden }
     }
 
     @objc private func statusItemClicked() {
@@ -268,6 +286,8 @@ final class PanelModel {
     var revealed = false
     var range: SpendRange = .today
     var breakdown: SpendBreakdown = .models
+    /// macOS isn't showing the menu bar item: the menu bar is too full beside the notch.
+    var menuBarItemHidden = false
 }
 
 private final class HoverTracker: NSResponder {
