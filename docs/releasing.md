@@ -21,6 +21,12 @@ Scripts/release.sh
 
 The README never names a version: its badge and download links point at the latest release, so a release needs no README edit.
 
+## Versioning
+
+From 1.6.0 on, the middle number moves only for headline releases: a new area of the app or a change existing users have to relearn. Everything else, features included, bumps the last number: 1.6.0, 1.6.1, 1.6.2… It can climb as high as it needs to, and after 1.9 comes 1.10, so no number needs padding. 2.0 is for a break, such as dropping a macOS version.
+
+`CFBundleVersion` is a separate build number that goes up by one with every release whatever the version, since it's what Sparkle compares.
+
 ## How updates reach users
 
 - **Sparkle:** the app's `SUFeedURL` is `https://raw.githubusercontent.com/bubb4rd/GlassUsage/appcast/appcast.xml`, so publishing a release is all it takes. Sparkle compares `CFBundleVersion`, so that number must go up with every release. The feed lives on a branch rather than as a release asset because GitHub counts every asset fetch as a download, and every daily update check would count. v1.4.1 and earlier still read `releases/latest/download/appcast.xml`, so each release keeps attaching a copy until they've updated.
