@@ -96,7 +96,7 @@ struct DitherCanvas: View {
 }
 
 /// A limit ring as two rows of cells around the circle: lit from `startBand` up into `endBand` at the leading tip
-/// up to `fill`, a sparse dither in `endBand` on to `ghost` for the pace projection, faint dots after. While `fill`
+/// up to `fill`, a tail on to `ghost` for the pace projection that tapers from the tip into `endBand`, faint dots after. While `fill`
 /// sweeps toward `target` its leading cells run hot; `warmth` (0 at rest → 1 on hover) pulls the tip gradient back
 /// and brightens the pace ghost.
 struct DitherRing: View, Animatable {
@@ -124,6 +124,8 @@ struct DitherRing: View, Animatable {
         let ghostColor = endBand.color
         let ghostOpacity = paceHot ? 0.78 + 0.17 * warmth : 0.85
         let span = max(fill, target)
+        // The fill's leading color, which the pace tail starts from.
+        let tipColor = Theme.Band.color(from: startBand, to: endBand, at: span > 0 ? min(fill / span, 1) : 0, power: power)
         DitherCanvas(glow: 2.5) { context, size, glow in
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
             // On the circle the solid ring strokes, two rows straddling it within its 7pt width.
@@ -146,10 +148,18 @@ struct DitherRing: View, Animatable {
                             context.fill(cell, with: .color(color.opacity(0.35)))
                         }
                     } else if at <= ghost {
-                        if Dither.lit(step, row * 2 + 1, 0.3) {
-                            context.fill(cell, with: .color(ghostColor.opacity(ghostOpacity)))
+                        // A tail tapering from the tip: dense where it leaves the fill, the outer row giving out by
+                        // about halfway and the inner thinning to the end. Cells are picked by hash, as a 4×4 Bayer
+                        // threshold over two rows lights a fixed every-fourth cell.
+                        let d = (at - fill) / (ghost - fill)
+                        let density = row == 0
+                            ? 0.08 + 0.92 * pow(1 - d, 1.4)
+                            : 0.95 * pow(max(0, 1 - d * 1.8), 1.6)
+                        if Dither.hash(step, row, 3) < density {
+                            let color = tipColor.mix(with: ghostColor, by: min(1, d * 4))
+                            context.fill(cell, with: .color(color.opacity(ghostOpacity * (1 - 0.4 * d))))
                         } else if !glow {
-                            context.fill(cell, with: .color(ghostColor.opacity(0.16)))
+                            context.fill(cell, with: .color(ghostColor.opacity(0.12)))
                         }
                     } else if !glow {
                         context.cell(point, 1.4, .primary.opacity(0.16))
