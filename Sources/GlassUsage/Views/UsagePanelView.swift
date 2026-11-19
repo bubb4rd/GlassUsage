@@ -266,8 +266,9 @@ private struct GroupPicker: View {
     }
 }
 
-/// Session or weekly window as a ring in the status-band color, with its countdown and reset time. A fainter arc
-/// ahead of the fill shows where the window ends at the current pace; hovering swaps the text to that projection.
+/// Session or weekly window as a ring, anchored in its raw usage band and warming along its leading tip into the
+/// pace band when usage runs hot. A fainter arc ahead of the fill shows where the window ends at the current pace;
+/// hovering swaps the text to that projection and deepens the tip warmth.
 private struct LimitRing: View {
     let window: UsageWindow
     let now: Date
@@ -301,44 +302,28 @@ private struct LimitRing: View {
         default: nil
         }
         let showsPace = hovering && pace != nil
+        let warmth: Double = showsPace ? 1 : 0
         HStack(spacing: 11) {
             ZStack {
-                if fill == .dither {
-                    // The pace projection sweeps out on hover as the solid arc does, as a sparse dither past the fill.
-                    KeyframeAnimator(initialValue: 1.0, trigger: paceDraws) { drawn in
-                        DitherRing(fill: swept ? window.fraction : 0,
-                                   ghost: ghost.map { swept ? window.fraction + ($0 - window.fraction) * drawn : 0 } ?? 0,
-                                   target: window.fraction, color: band.color)
-                    } keyframes: { _ in
-                        MoveKeyframe(0)
-                        LinearKeyframe(1, duration: Motion.drawDuration, timingCurve: Motion.drawCurve)
+                KeyframeAnimator(initialValue: 1.0, trigger: paceDraws) { drawn in
+                    let currentFill = swept ? window.fraction : 0
+                    let currentGhost = ghost.map { swept ? window.fraction + ($0 - window.fraction) * drawn : 0 } ?? 0
+                    if fill == .dither {
+                        // The pace projection sweeps out on hover as the solid arc does, as a sparse dither past the fill.
+                        DitherRing(fill: currentFill, ghost: currentGhost, warmth: warmth, target: window.fraction,
+                                   startBand: usage, endBand: band)
+                    } else {
+                        SolidRing(fill: currentFill, ghost: currentGhost, warmth: warmth, target: window.fraction,
+                                  ghostRoundCap: (ghost ?? 1) < 1, startBand: usage, endBand: band)
                     }
-                    .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: window.fraction)
-                    .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: ghost)
-                    .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
-                } else {
-                    Circle().stroke(Theme.track, lineWidth: 7)
-                    if let ghost {
-                        // On hover the arc collapses into the fill and sweeps back out to the projection, as rings sweep in.
-                        KeyframeAnimator(initialValue: 1.0, trigger: paceDraws) { drawn in
-                            Circle()
-                                .trim(from: 0, to: swept ? window.fraction + (ghost - window.fraction) * drawn : 0)
-                                .stroke(band.color.opacity(0.3), style: StrokeStyle(lineWidth: 7, lineCap: ghost < 1 ? .round : .butt))
-                                .rotationEffect(.degrees(-90))
-                        } keyframes: { _ in
-                            MoveKeyframe(0)
-                            LinearKeyframe(1, duration: Motion.drawDuration, timingCurve: Motion.drawCurve)
-                        }
-                        .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: ghost)
-                        .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
-                    }
-                    Circle()
-                        .trim(from: 0, to: max(swept ? window.fraction : 0, 0.01))
-                        .stroke(band.color, style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: window.fraction)
-                        .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
+                } keyframes: { _ in
+                    MoveKeyframe(0)
+                    LinearKeyframe(1, duration: Motion.drawDuration, timingCurve: Motion.drawCurve)
                 }
+                .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: window.fraction)
+                .animation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.4), value: ghost)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: warmth)
+                .animation(Motion.curve(swept, Motion.draw, delay: base + delay), value: swept)
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text("\(Int(window.percent.rounded()))")
                         .font(.system(size: 18, weight: .semibold))
@@ -430,6 +415,55 @@ private struct LimitRing: View {
         case .early: nil
         case .onPace(let projected): ", on pace to end near \(Format.percent(projected * 100))"
         case .runsOut(let emptyAt, _): ", runs out around \(Format.hour(emptyAt, now: now, spoken: true)) at this pace"
+        }
+    }
+}
+
+/// Solid-fill counterpart to `DitherRing`: track, optional pace ghost in `endBand`, and an active arc anchored
+/// in `startBand` that warms along a multi-stop angular gradient into `endBand` at its leading tip.
+private struct SolidRing: View, Animatable {
+    var fill: Double
+    var ghost: Double
+    var warmth: Double
+    let target: Double
+    let ghostRoundCap: Bool
+    let startBand: Theme.Band
+    let endBand: Theme.Band
+
+    var animatableData: AnimatablePair<AnimatablePair<Double, Double>, Double> {
+        get { AnimatablePair(AnimatablePair(fill, ghost), warmth) }
+        set {
+            fill = newValue.first.first
+            ghost = newValue.first.second
+            warmth = newValue.second
+        }
+    }
+
+    var body: some View {
+        let paceHot = endBand > startBand
+        let ghostOpacity = paceHot ? 0.30 + 0.14 * warmth : 0.28
+        ZStack {
+            Circle().stroke(Theme.track, lineWidth: 7)
+            if ghost > fill {
+                Circle()
+                    .trim(from: fill, to: ghost)
+                    .stroke(endBand.color.opacity(ghostOpacity),
+                            style: StrokeStyle(lineWidth: 7, lineCap: ghostRoundCap ? .round : .butt))
+                    .rotationEffect(.degrees(-90))
+            }
+            if paceHot {
+                let stops = Theme.Band.gradientStops(from: startBand, to: endBand, fraction: max(fill, target),
+                                                     power: Theme.Band.tipPower(warmth: warmth))
+                Circle()
+                    .trim(from: 0, to: max(fill, 0.01))
+                    .stroke(AngularGradient(stops: stops, center: .center), style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            } else {
+                Circle()
+                    .trim(from: 0, to: max(fill, 0.01))
+                    .stroke(startBand.color, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
         }
     }
 }

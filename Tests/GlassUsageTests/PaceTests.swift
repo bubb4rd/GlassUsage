@@ -55,15 +55,56 @@ import Testing
         #expect(window(61, resets: nil, duration: Self.week).pace(at: now) == nil, "no reset time, nothing to project")
     }
 
-    @MainActor @Test func paceWarmsTheRingAtMostOneStepPastItsUsage() {
-        #expect(Theme.Band(window: window(47, resets: Self.date(23, 6, 30), duration: Self.week), now: now) == .warning,
-                "out for over a quarter of the week, but 47% used reads yellow, not red")
+    @MainActor @Test func paceReachesFullTipSeverityWithoutCoolingUsage() {
+        #expect(Theme.Band(window: window(47, resets: Self.date(23, 6, 30), duration: Self.week), now: now) == .critical,
+                "out for over a quarter of the week heats the tip to red while the body stays green")
         #expect(Theme.Band(window: window(80, resets: Self.date(23, 6, 30), duration: Self.week), now: now) == .critical,
-                "80% used and out for days goes red")
+                "80% used and out for days heats from orange into red")
         #expect(Theme.Band(window: window(61, resets: Self.date(20, 14, 0), duration: Self.week), now: now) == .serious,
-                "out for under a quarter of the week")
+                "out for under a quarter of the week heats yellow into orange")
+        #expect(Theme.Band(window: window(28, resets: Self.date(17, 13, 26), duration: Self.session), now: now) == .serious,
+                "28% used ~75m into a 5h session runs out early and heats green into orange")
+        #expect(Theme.Band(window: window(48, resets: Self.date(17, 12, 11), duration: Self.session), now: now) == .warning,
+                "on pace for ~96% by reset warms green toward yellow")
         #expect(Theme.Band(window: window(92, resets: Self.date(17, 9, 51), duration: Self.session), now: now) == .critical,
                 "92% used stays red even on pace")
         #expect(Theme.Band(window: window(12, resets: Self.date(17, 14, 12), duration: Self.session), now: now) == .good)
+    }
+
+    @MainActor @Test func gradientRampFlowsThroughIntermediateBands() {
+        #expect(Theme.Band.good.ramp(to: .critical) == [.good, .warning, .serious, .critical])
+        #expect(Theme.Band.warning.ramp(to: .critical) == [.warning, .serious, .critical])
+        #expect(Theme.Band.good.ramp(to: .warning) == [.good, .warning])
+        #expect(Theme.Band.serious.ramp(to: .serious) == [.serious])
+        #expect(Theme.Band.critical.ramp(to: .good) == [.critical])
+    }
+
+    @MainActor @Test func gradientStopsStayMonotonicAndGuardStartSeam() {
+        #expect(abs(Theme.Band.tipPower(warmth: 0) - 1.75) < 0.001)
+        #expect(abs(Theme.Band.tipPower(warmth: 1) - 1.20) < 0.001)
+        #expect(abs(Theme.Band.tipPower(warmth: -1) - 1.75) < 0.001)
+        #expect(abs(Theme.Band.tipPower(warmth: 2) - 1.20) < 0.001)
+
+        #expect(Theme.Band.color(from: .good, to: .critical, at: 0) == Theme.Band.good.color)
+        #expect(Theme.Band.color(from: .good, to: .critical, at: 1) == Theme.Band.critical.color)
+        #expect(Theme.Band.color(from: .good, to: .critical, at: 1.0 / 3.0, power: 1) == Theme.Band.warning.color)
+        #expect(Theme.Band.color(from: .good, to: .critical, at: 2.0 / 3.0, power: 1) == Theme.Band.serious.color)
+
+        let flat = Theme.Band.gradientStops(from: .serious, to: .serious, fraction: 0.84)
+        #expect(flat.count == 2)
+        #expect(flat.first?.location == 0)
+        #expect(flat.last?.location == 1)
+
+        for fraction in [0.01, 0.28, 0.65, 0.89, 0.98] {
+            let stops = Theme.Band.gradientStops(from: .good, to: .critical, fraction: fraction)
+            #expect(stops.first?.location == 0)
+            #expect(stops.last?.location == 1)
+            #expect(stops.first?.color == Theme.Band.good.color)
+            #expect(stops.last?.color == Theme.Band.good.color, "start cap wrap-around must stay in the usage color")
+            for (prev, next) in zip(stops, stops.dropFirst()) {
+                #expect(prev.location <= next.location, "stops must be monotonic for fraction \(fraction)")
+                #expect(prev.location >= 0 && next.location <= 1)
+            }
+        }
     }
 }

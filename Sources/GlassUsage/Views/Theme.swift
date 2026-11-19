@@ -20,7 +20,7 @@ enum Theme {
     // Status bands.
     static let good = dynamic(0x0CA30C, 0x0CA30C)
     static let warning = dynamic(0xFAB219, 0xFAB219)
-    static let serious = dynamic(0xEC835A, 0xEC835A)
+    static let serious = dynamic(0xE26F3A, 0xEC835A)
     static let critical = dynamic(0xD03B3B, 0xE66767)
 
     /// Identity color per provider in a color theme, for chart stacks, the spend bar and list bars (graphite is
@@ -52,8 +52,10 @@ enum Theme {
     }
 
     /// Ordered by severity, so `max` picks the worse of two.
-    enum Band: Comparable {
+    enum Band: Int, Comparable, CaseIterable {
         case good, warning, serious, critical
+
+        static func < (lhs: Band, rhs: Band) -> Bool { lhs.rawValue < rhs.rawValue }
 
         init(percent: Double) {
             switch percent {
@@ -65,9 +67,9 @@ enum Theme {
         }
 
         /// The worse of how much is used and where the pace leads: close to the limit by the reset is a warning,
-        /// running out before it serious, and out for over a quarter of the window critical. Pace warms the ring at
-        /// most one step past its usage: early in a window one busy day projects a long lockout, and a ring at 36%
-        /// shouldn't read red. The pace arc and its hover text tell the rest.
+        /// running out before it serious, and out for over a quarter of the window critical. Because the ring's
+        /// body stays anchored to raw usage and only its leading tip and pace ghost warm up to this band, pace can
+        /// reach its full severity without turning a low-usage ring solid red.
         init(window: UsageWindow, now: Date) {
             let usage = Band(percent: window.percent)
             let pace: Band = switch window.pace(at: now) {
@@ -75,16 +77,58 @@ enum Theme {
             case .runsOut(_, let lockout): lockout > 0.25 * window.duration ? .critical : .serious
             default: .good
             }
-            self = max(usage, min(pace, usage.next))
+            self = max(usage, pace)
         }
 
-        /// One step warmer, stopping at critical.
-        private var next: Band {
-            switch self {
-            case .good: .warning
-            case .warning: .serious
-            case .serious, .critical: .critical
+        /// Ordered status bands from `self` up to `target`, inclusive, so multi-step gradients flow through
+        /// intermediate bands (e.g. green → yellow → orange → red) rather than muddying across RGB.
+        func ramp(to target: Band) -> [Band] {
+            guard target > self else { return [self] }
+            return (rawValue...target.rawValue).compactMap(Band.init(rawValue:))
+        }
+
+        /// Exponent shaping how far warmth pulls back from the leading tip (`0` at rest → `1` on hover).
+        static func tipPower(warmth: Double) -> Double {
+            1.75 - 0.55 * min(max(warmth, 0), 1)
+        }
+
+        /// Color along the band ramp from `start` to `end` at normalized arc position `t` (0–1).
+        static func color(from start: Band, to end: Band, at t: Double, power: Double = 1.75) -> Color {
+            guard end > start else { return start.color }
+            let clamped = min(max(t, 0), 1)
+            if clamped <= 0 { return start.color }
+            if clamped >= 1 { return end.color }
+            let shaped = pow(clamped, power)
+            let span = Double(end.rawValue - start.rawValue)
+            let pos = Double(start.rawValue) + shaped * span
+            let lower = min(Int(pos.rounded(.down)), end.rawValue - 1)
+            let local = pos - Double(lower)
+            let a = Band(rawValue: lower)!.color
+            let b = Band(rawValue: lower + 1)!.color
+            if local <= 0 { return a }
+            if local >= 1 { return b }
+            return a.mix(with: b, by: local)
+        }
+
+        /// Stops for a solid `AngularGradient` sweeping clockwise from 12 o'clock to `fraction`, flowing from
+        /// `start` into `end` at the leading tip. Holds `end` just past the rounded endcap and resets to `start`
+        /// before 1.0 so the rounded start cap at 12 o'clock never picks up `end` across the wrap seam.
+        static func gradientStops(from start: Band, to end: Band, fraction: Double, power: Double = 1.75) -> [Gradient.Stop] {
+            guard end > start else {
+                return [.init(color: start.color, location: 0), .init(color: start.color, location: 1)]
             }
+            let clamped = min(max(fraction, 0.01), 0.94)
+            let samples = 16
+            var stops = (0...samples).map { step -> Gradient.Stop in
+                let u = Double(step) / Double(samples)
+                return .init(color: color(from: start, to: end, at: u, power: power), location: u * clamped)
+            }
+            let endHold = min(clamped + 0.03, 0.97)
+            let seamStart = min(endHold + 0.01, 0.98)
+            stops.append(.init(color: end.color, location: endHold))
+            stops.append(.init(color: start.color, location: seamStart))
+            stops.append(.init(color: start.color, location: 1))
+            return stops
         }
 
         var color: Color {

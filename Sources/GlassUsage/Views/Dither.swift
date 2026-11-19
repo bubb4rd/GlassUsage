@@ -95,22 +95,35 @@ struct DitherCanvas: View {
     }
 }
 
-/// A limit ring as two rows of cells around the circle: lit in the band color up to `fill`, a sparse dither on to
-/// `ghost` for the pace projection, faint dots after. While `fill` sweeps toward `target` its leading cells run hot.
+/// A limit ring as two rows of cells around the circle: lit from `startBand` up into `endBand` at the leading tip
+/// up to `fill`, a sparse dither in `endBand` on to `ghost` for the pace projection, faint dots after. While `fill`
+/// sweeps toward `target` its leading cells run hot; `warmth` (0 at rest → 1 on hover) pulls the tip gradient back
+/// and brightens the pace ghost.
 struct DitherRing: View, Animatable {
     var fill: Double
     var ghost: Double
+    var warmth: Double
     let target: Double
-    let color: Color
+    let startBand: Theme.Band
+    let endBand: Theme.Band
 
-    var animatableData: AnimatablePair<Double, Double> {
-        get { AnimatablePair(fill, ghost) }
-        set { (fill, ghost) = (newValue.first, newValue.second) }
+    var animatableData: AnimatablePair<AnimatablePair<Double, Double>, Double> {
+        get { AnimatablePair(AnimatablePair(fill, ghost), warmth) }
+        set {
+            fill = newValue.first.first
+            ghost = newValue.first.second
+            warmth = newValue.second
+        }
     }
 
     private static let steps = 52
 
     var body: some View {
+        let power = Theme.Band.tipPower(warmth: warmth)
+        let paceHot = endBand > startBand
+        let ghostColor = endBand.color
+        let ghostOpacity = paceHot ? 0.78 + 0.17 * warmth : 0.85
+        let span = max(fill, target)
         DitherCanvas(glow: 2.5) { context, size, glow in
             let center = CGPoint(x: size.width / 2, y: size.height / 2)
             // On the circle the solid ring strokes, two rows straddling it within its 7pt width.
@@ -124,6 +137,8 @@ struct DitherRing: View, Animatable {
                     let cell = Path(CGRect(x: -1.35, y: -1.35, width: 2.7, height: 2.7))
                         .applying(CGAffineTransform(translationX: point.x, y: point.y).rotated(by: angle))
                     if at <= fill {
+                        let u = span > 0 ? min(at / span, 1) : 0
+                        let color = Theme.Band.color(from: startBand, to: endBand, at: u, power: power)
                         let heat = sweeping ? max(0, 1 - (fill - at) / 0.08) : 0
                         if Dither.lit(step, row * 2, 0.86 + heat) {
                             context.fill(cell, with: .color(heat > 0 ? color.mix(with: .white, by: heat * 0.8) : color))
@@ -132,9 +147,9 @@ struct DitherRing: View, Animatable {
                         }
                     } else if at <= ghost {
                         if Dither.lit(step, row * 2 + 1, 0.3) {
-                            context.fill(cell, with: .color(color.opacity(0.9)))
+                            context.fill(cell, with: .color(ghostColor.opacity(ghostOpacity)))
                         } else if !glow {
-                            context.fill(cell, with: .color(color.opacity(0.16)))
+                            context.fill(cell, with: .color(ghostColor.opacity(0.16)))
                         }
                     } else if !glow {
                         context.cell(point, 1.4, .primary.opacity(0.16))
