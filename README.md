@@ -82,7 +82,7 @@ Pick a layout under *Rings* in Settings, then click any ring to point it at a pr
 
 Toggle with **$**. See what today, the last 7 days or the last 30 days would cost at API prices: a bar per day against your daily average, the tokens, cache reads and output behind it, and your top models, projects or sources, each with its share. With more than one provider, a bar splits the spend between them; hover a slice or a name to pick it out.
 
-<img src="docs/spend-styles.svg" width="100%" alt="The spend bar and day chart in each color theme, Graphite, Providers and Neon, drawn solid and as a glowing dot-matrix dither.">
+<img src="docs/spend-styles.svg" width="100%" alt="The spend block in Catppuccin, drawn as a dot-matrix dither: 328.6M tokens today, a bar split between Claude, Codex, Antigravity and Muse Code, a bar per day against the daily average, and $136 API value with cache reads and output. Numbered notes explain each part, and a list shows the color themes, Graphite, Catppuccin, Neon, Pantone, Memphis, Matisse and Acid, each drawn solid or as a dither.">
 
 Projects are the git repository each session ran in, so subfolders, worktrees and submodules count toward their repository, shown with the project's own app icon, logo or favicon.
 
@@ -99,7 +99,7 @@ macOS asks before an app reads Documents, Desktop, Downloads, cloud storage or e
 |---|---|
 | **Show** | *Value*: dollars lead · *Tokens*: token counts lead and lists rank by them |
 | **Chart** | *Ledger*: a bar per day · *Calendar*: weeks by weekday, with weekly totals |
-| **Colors** | *Graphite*: gray steps, the default · *Providers*: each brand's color · *Neon*: brighter, further apart |
+| **Colors** | *Graphite*: gray steps, the default · a color per provider in *Catppuccin*, *Neon*, *Pantone*, *Memphis*, *Matisse* or *Acid*, each shown with its swatch in the menu |
 | **Fill** | *Solid* · *Dither*: a dot matrix on rings and charts that glows in dark mode |
 | **Lists** | Any of Models, Projects and Sources, or none |
 | **Open on hover** | Peek without clicking; moving away closes it |
