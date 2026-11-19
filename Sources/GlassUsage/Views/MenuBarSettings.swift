@@ -65,26 +65,35 @@ extension SettingsView {
                 .foregroundStyle(.tertiary)
                 .padding(.leading, 12)
                 .padding(.top, 8)
-            FlowLayout {
-                ForEach(tiles, id: \.label) { tile in
-                    ringTile(tile.label, tile.layout, selected: tile.layout == layout)
+            // One row: full size when it fits, a little smaller when it doesn't, and wrapping only when even the
+            // smaller tiles are too wide (a wide custom layout).
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { ForEach(tiles, id: \.label) { ringTile($0.label, $0.layout, selected: $0.layout == layout) } }
+                HStack(spacing: 4) {
+                    ForEach(tiles, id: \.label) { ringTile($0.label, $0.layout, selected: $0.layout == layout, scale: 0.8) }
                 }
+                FlowLayout { ForEach(tiles, id: \.label) { ringTile($0.label, $0.layout, selected: $0.layout == layout) } }
             }
             .padding(8)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func ringTile(_ label: String, _ layout: MenuBarLayout, selected: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 9)
+    /// `scale` shrinks the slice of menu bar with its padding, for a row that doesn't fit at full size.
+    private func ringTile(_ label: String, _ layout: MenuBarLayout, selected: Bool, scale: CGFloat = 1) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 9 * scale)
+        let image = StatusIcon.image(store.menuBarIcons(layout))
         return Button {
             store.settings.menuBarLayout = layout
             select(nil)
         } label: {
-            Image(nsImage: StatusIcon.image(store.menuBarIcons(layout)))
+            Image(nsImage: image)
+                .resizable()
                 .renderingMode(.template)
+                .frame(width: image.size.width * scale, height: image.size.height * scale)
                 .foregroundStyle(.white.opacity(0.92))
-                .padding(.horizontal, 7)
-                .frame(height: 28)
+                .padding(.horizontal, 7 * scale)
+                .frame(height: 28 * scale)
                 .background(shape.fill(Color(red: 40 / 255, green: 40 / 255, blue: 60 / 255).opacity(0.65)))
                 .overlay { shape.strokeBorder(.white.opacity(selected ? 0.4 : 0.08), lineWidth: selected ? 1 : 0.5) }
                 .opacity(selected ? 1 : 0.6)
