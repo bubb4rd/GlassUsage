@@ -781,7 +781,7 @@ private struct ProviderShare: View {
         }
     }
 
-    /// Two providers to a row, each with its figure at the end.
+    /// Two providers to a row, each with its color in the bar, its logo and its figure at the end.
     private func legend(_ totals: [(provider: ProviderID, value: Double)], byCost: Bool) -> some View {
         let rows = stride(from: 0, to: totals.count, by: 2).map { Array(totals[$0..<min($0 + 2, totals.count)]) }
         return Grid(horizontalSpacing: 12, verticalSpacing: 0) {
@@ -789,7 +789,12 @@ private struct ProviderShare: View {
                 GridRow {
                     ForEach(rows[row], id: \.provider) { item in
                         HStack(spacing: 7) {
-                            ProviderLogo(provider: item.provider, size: 12).frame(width: 14)
+                            HStack(spacing: 5) {
+                                RoundedRectangle(cornerRadius: 2.5)
+                                    .fill(palette.color(for: item.provider))
+                                    .frame(width: 8, height: 8)
+                                ProviderLogo(provider: item.provider, size: 12).frame(width: 14)
+                            }
                             Text(item.provider.displayName).fontWeight(.medium).lineLimit(1)
                             Spacer(minLength: 4)
                             Text(figure(item.value, byCost: byCost)).foregroundStyle(.secondary)
