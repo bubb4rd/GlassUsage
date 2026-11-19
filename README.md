@@ -12,59 +12,100 @@
 
 <p align="center">Your AI coding plan limits, plus the tokens you burn, one click away in the menu bar.</p>
 
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#supported-providers">Providers</a> ·
+  <a href="#privacy">Privacy</a> ·
+  <a href="#faq">FAQ</a>
+</p>
+
 <p align="center"><img src="docs/hero-panels.jpg" alt="GlassUsage panels up close at an angle: Antigravity's rings on their own, limits and spend for Claude, Codex and Antigravity in solid and dither fills, and Settings editing a Duo menu bar ring"></p>
 
-GlassUsage is a native Liquid Glass menu bar app for macOS. It shows how much of each AI plan's session and weekly limits you've used and when each one resets, across every provider you sign in to, so you're never surprised mid-task. Optionally, it also shows how many tokens you've burned and what they would cost at API prices.
+GlassUsage is a native Liquid Glass menu bar app for macOS. It shows how much of each AI plan's session and weekly limits you've used and when each resets, across every provider you sign in to, so you're never surprised mid-task. Optionally, it shows the tokens you've burned and what they would cost at API prices.
 
-It has no account or server of its own: it reuses the sign-ins your coding tools already keep on your Mac, and it never stores your credentials. See [Supported providers](#supported-providers) for what works today.
+No account, no server: it reuses the sign-ins your coding tools already keep on your Mac and never stores your credentials.
 
 ## Install
-
-GlassUsage runs on macOS 26 (Tahoe) or later, on Apple silicon and Intel.
-
-**Homebrew**
 
 ```sh
 brew install --cask bubb4rd/tap/glassusage
 ```
 
-**Manual download**
+Or download `GlassUsage-<version>.zip` from the [latest release](https://github.com/bubb4rd/GlassUsage/releases/latest), unzip it, and move **GlassUsage.app** to Applications. It's signed and notarized, so it opens without a warning.
 
-1. Download `GlassUsage-<version>.zip` from the [latest release](https://github.com/bubb4rd/GlassUsage/releases/latest) and unzip it.
-2. Move **GlassUsage.app** to Applications and open it. It's signed and notarized by Apple, so it opens without a warning.
-3. Look for a small double ring and a percentage in the menu bar. There's no Dock icon.
+Look for a small double ring and a percentage in the menu bar; there's no Dock icon. Sign in to at least one [supported provider](#supported-providers) with its own CLI and GlassUsage picks it up on launch. Needs macOS 26 (Tahoe) or later, on Apple silicon or Intel.
 
-To check a download, keep the zip and the `.sha256` file published next to it in the same folder, then run:
+<details>
+<summary><b>Verify the download</b></summary>
+
+Keep the zip and the `.sha256` file published next to it in the same folder, then run:
 
 ```sh
 shasum -a 256 -c GlassUsage-*.zip.sha256    # prints "GlassUsage-<version>.zip: OK"
 ```
 
-### Before you start
+</details>
 
-GlassUsage reads limits from the tools you already use. Sign in to at least one [supported provider](#supported-providers) with its own CLI, and GlassUsage picks it up on launch.
+<details>
+<summary><b>Updating</b></summary>
 
-### Updating
+GlassUsage updates itself, Homebrew installs included. It checks GitHub for new releases and asks before installing. When a new version is out, a dot appears on the gear and Settings shows a green **Update** button. To check by hand, click the download arrow in Settings or right-click the menu bar icon → **Check for Updates…**. Changes are listed on the [Releases](https://github.com/bubb4rd/GlassUsage/releases) page.
 
-GlassUsage updates itself, Homebrew installs included. It checks GitHub for new releases and asks before installing. When a new version is out, a dot appears on the gear and Settings shows a green **Update** button with the new version number. To check by hand, click the download arrow in Settings or right-click the menu bar icon → **Check for Updates…**.
+</details>
 
-What changed in each version is on the [Releases](https://github.com/bubb4rd/GlassUsage/releases) page.
-
-### Uninstalling
+<details>
+<summary><b>Uninstalling</b></summary>
 
 Quit GlassUsage (right-click the icon → Quit) and delete it from Applications, or run `brew uninstall --cask glassusage`. To also remove its settings and cache, run `brew uninstall --zap --cask glassusage`, or delete the files listed under [Files on disk](docs/how-it-works.md#files-on-disk).
 
+</details>
+
 ## Features
 
-- **Session and weekly limits:** a ring per window, with the time until it resets and the exact reset time. Plans with a monthly window show that instead. Providers that meter model groups separately get arrows above their rings to step between groups, starting on the one closest to its limit, or on the group picked in Settings. Rings turn yellow at 50%, orange at 75% and red at 90%. Providers are listed in the order the menu bar shows them.
-- **Pace:** a faint arc ahead of each ring's fill shows where the window ends at your current pace. When that pace runs it out before the reset, the ring warms one color step past its usage (a ring at 36% turns yellow, not red). Hover a ring to see when it hits 100%, or where it lands when it resets.
-- **Menu bar at a glance:** by default two rings, the session inside and the week outside, with the percentage of whichever is closer to running out. Under *Rings* in Settings, pick a layout drawn as it would look in your menu bar: **Classic** (one provider), **Duo** (two providers' weeks in one icon, one ring inside the other) or **Side by side** (an icon per provider, up to three). Click a ring below the layouts to point it at any tracked provider and its session, week, or whichever window is closer to its limit. **+** adds a ring or an icon, and hovering one shows an **×** to remove it. Each icon has its own percentage. Your edits are kept as **Custom**, so trying a preset doesn't lose them. A ring dims on its own when its provider's reading is stale or failed. Hover the menu bar item to see which ring is which.
-- **Token spend** (toggle with **$**): what today, the last 7 days or the last 30 days would cost at API prices, a bar per day with your daily average, the tokens, cache reads and output behind it, and your top models, projects or sources by cost, each with its tokens and share. Projects are the git repository each session ran in, so a subfolder, worktree or submodule counts toward its repository's top folder, shown with the project's own app icon, logo or favicon when its folder has one. For projects in Documents, Desktop, Downloads, cloud storage or external drives, logos and repository lookup need *Projects in Documents & Desktop* in Settings, or *Read projects in Documents & Desktop* under the projects, since macOS asks before an app reads those folders. Pick in Settings what it *Shows*: *Value* (dollars lead) or *Tokens* (token counts lead and the lists rank by them, with the dollars beside), how days are drawn: *Ledger* (a bar per day) or *Calendar* (weeks by weekday, with weekly totals), their *Colors*: *Graphite* (gray steps, the default for new installs), *Providers* (each provider's brand color, kept when you update from an earlier version) or *Neon* (brighter colors set further apart), and which *Lists* sit under the chart: any of models, projects and sources, or none.
-- **Spend bar and dither:** with more than one provider, a bar splits the range's spend between them, each listed with its total; hover a slice or a name to pick it out. *Fill* in Settings draws the rings, spend bar, day chart and list bars solid or as a dot-matrix dither that glows in dark mode, sweeps in white-hot, and scans across the empty bar while logs are first read.
-- **Limit alerts:** pick 50%, 75% or 90% in Settings and get a notification when any tracked limit reaches it, and another when that window resets. Off by default.
-- **Reads local logs:** spend comes from your coding tools' session logs on this Mac, parsed incrementally like [ccusage](https://github.com/ryoppippi/ccusage). Each provider's sources are listed under [Supported providers](#supported-providers).
-- **Out of your way:** click to open, or turn on *Open on hover* to peek. Moving the pointer away closes it. ⌘R refreshes, ⌘, opens Settings, Esc closes.
-- **Launch at login**, a selectable refresh interval, and automatic updates.
+### Limits at a glance
+
+<img src="docs/rings.svg" width="100%" alt="Two limit rings for Claude: the 5 hour session at 38% in green with a faint arc reaching about 70% where it lands at the current pace, and the week at 61% in orange because it runs out before the reset. A scale shows rings turn yellow at 50%, orange at 75% and red at 90%.">
+
+- **A ring per window:** session, weekly, or monthly where the plan has one, with the time left and the exact reset.
+- **Pace:** the faint arc shows where the window lands at your current pace. Running out before the reset warms the ring one step past its usage, so a ring at 36% turns yellow, not red. Hover a ring to see when it hits 100%.
+- **Model groups:** providers that meter groups separately get arrows to step between them, starting on the one closest to its limit or the one picked in Settings.
+- **Alerts:** a notification when any limit reaches 50%, 75% or 90%, and another when it resets. Off by default.
+
+### Your menu bar, your rings
+
+<img src="docs/menu-bar.svg" width="100%" alt="Four menu bar layouts: Classic, a double ring with 61%; Duo, two providers' weeks in one icon with 61% · 47%; Side by side, three icons without numbers; Custom, a double ring with 61% next to a single ring with 12%.">
+
+Pick a layout under *Rings* in Settings, then click any ring to point it at a provider's session, week, or whichever window is closer to its limit. **+** adds a ring or an icon; hover one for **×** to remove it. Edits are kept as **Custom**, so trying a preset never loses them. A ring dims when its reading is stale or failed, and hovering the menu bar item names every ring.
+
+### Token spend
+
+Toggle with **$**. See what today, the last 7 days or the last 30 days would cost at API prices: a bar per day against your daily average, the tokens, cache reads and output behind it, and your top models, projects or sources, each with its share. With more than one provider, a bar splits the spend between them; hover a slice or a name to pick it out.
+
+<img src="docs/spend-styles.svg" width="100%" alt="The spend bar and day chart in each color theme, Graphite, Providers and Neon, drawn solid and as a glowing dot-matrix dither.">
+
+Projects are the git repository each session ran in, so subfolders, worktrees and submodules count toward their repository, shown with the project's own app icon, logo or favicon.
+
+<details>
+<summary><b>Projects in Documents, Desktop and other protected folders</b></summary>
+
+macOS asks before an app reads Documents, Desktop, Downloads, cloud storage or external drives. For projects there, logos and repository lookup need *Projects in Documents & Desktop* in Settings, or *Read projects in Documents & Desktop* under the Projects list.
+
+</details>
+
+### Make it yours
+
+| Setting | Options |
+|---|---|
+| **Show** | *Value*: dollars lead · *Tokens*: token counts lead and lists rank by them |
+| **Chart** | *Ledger*: a bar per day · *Calendar*: weeks by weekday, with weekly totals |
+| **Colors** | *Graphite*: gray steps, the default · *Providers*: each brand's color · *Neon*: brighter, further apart |
+| **Fill** | *Solid* · *Dither*: a dot matrix on rings and charts that glows in dark mode |
+| **Lists** | Any of Models, Projects and Sources, or none |
+| **Open on hover** | Peek without clicking; moving away closes it |
+| **General** | Refresh every 2 to 30 min · Launch at login · Update automatically |
+
+<kbd>⌘</kbd><kbd>R</kbd> refreshes, <kbd>⌘</kbd><kbd>,</kbd> opens Settings, <kbd>Esc</kbd> closes.
 
 ## Supported providers
 
@@ -75,28 +116,53 @@ Quit GlassUsage (right-click the icon → Quit) and delete it from Applications,
 | Antigravity | Session · Weekly · Model groups | CLI | Antigravity CLI, app, IDE, T3 Code | `agy` |
 | Muse Code | Session · Weekly | CLI | Muse Code | `muse login` |
 
-**API:** GlassUsage asks the provider's usage service with the login its tool already keeps. **CLI:** it asks the provider's own command-line tool, so it never sees the login. Plan limits need a subscription sign-in; API-key logins have no limits to show.
+**API:** GlassUsage asks the provider's usage service with the login its tool already keeps. **CLI:** it asks the provider's own command-line tool, so it never sees the login. Plan limits need a subscription sign-in; API-key logins have no limits to show. Sessions run through omp count toward the provider they used.
 
-Sessions run through omp count toward the provider they used. Want another provider? [Open an issue](https://github.com/bubb4rd/GlassUsage/issues) with the tool you use and how it reports usage.
+Want another provider? [Open an issue](https://github.com/bubb4rd/GlassUsage/issues) with the tool you use and how it reports usage.
 
 ## Privacy
 
-- **Credentials:** GlassUsage reuses the sign-in each provider's own tool keeps (see [Supported providers](#supported-providers)), or asks that tool's CLI for usage so it never sees the login at all. It never stores, refreshes or rewrites credentials.
-- **Logs:** your session logs are read on your Mac and never uploaded.
-- **Network:** only the providers' usage endpoints (for your limits) and GitHub (for prices and updates); providers read through their CLIs make their own requests. No analytics or telemetry.
+```mermaid
+flowchart LR
+  subgraph mac["Your Mac"]
+    direction TB
+    login["Sign-ins your tools keep"] -->|read only| app(("GlassUsage"))
+    cli["Provider CLIs"] -->|usage| app
+    logs["Session logs"] -->|parsed locally| app
+  end
+  app -->|limits| usage["Provider usage endpoints"]
+  cli -.->|their own requests| usage
+  app -->|prices, updates| gh["GitHub"]
+```
 
-See [How it works](docs/how-it-works.md) for the exact endpoints, files and formulas.
+- **Credentials** are never stored, refreshed or rewritten.
+- **Logs** are parsed incrementally on your Mac, like [ccusage](https://github.com/ryoppippi/ccusage), and never uploaded.
+- **No analytics or telemetry.** Nothing else leaves your Mac.
+
+[How it works](docs/how-it-works.md) lists the exact endpoints, files and formulas.
 
 ## FAQ
 
-**Why are the costs so high on a subscription?**
+<details>
+<summary><b>Why are the costs so high on a subscription?</b></summary>
+
 Spend shows what the same tokens would cost on the pay-per-token API. Your plan doesn't bill per token. Treat it as a way to compare days and models, not as a bill.
 
-**A provider shows "Sign in with…" instead of rings.**
-Sign in with that provider's CLI in Terminal (the command is under [Supported providers](#supported-providers)), then click refresh (⌘R).
+</details>
 
-**Is this official?**
+<details>
+<summary><b>A provider shows "Sign in with…" instead of rings.</b></summary>
+
+Sign in with that provider's CLI in Terminal (the command is under [Supported providers](#supported-providers)), then refresh with <kbd>⌘</kbd><kbd>R</kbd>.
+
+</details>
+
+<details>
+<summary><b>Is this official?</b></summary>
+
 No. GlassUsage is an independent project and is not affiliated with any of the providers it supports. It uses the same undocumented usage endpoints and commands as their official tools, and those can change. Updates will follow when they do.
+
+</details>
 
 ## Build from source
 
@@ -108,9 +174,7 @@ cd GlassUsage
 Scripts/build-app.sh --open    # universal build/GlassUsage.app, ad-hoc signed, then launches it
 ```
 
-`swift run` also works while developing, but *Launch at login* and updates only work from the `.app` bundle. `swift test` runs the provider parsing tests.
-
-Maintainers: see [Releasing](docs/releasing.md).
+`swift run` also works while developing, but *Launch at login* and updates only work from the `.app` bundle. `swift test` runs the provider parsing tests. Maintainers: see [Releasing](docs/releasing.md).
 
 ## Contributing
 
