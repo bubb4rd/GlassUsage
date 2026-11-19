@@ -3,7 +3,9 @@
 #
 #   Scripts/release.sh                 notarized release for the version in Support/Info.plist (tag v<version>)
 #   Scripts/release.sh --no-notarize   Developer ID-signed only; Gatekeeper asks users to approve the first launch
+#   Scripts/release.sh --hotfix        allow a release within 24 hours of the previous one (docs/releasing.md, Cadence)
 #
+# Runs only on main, in sync with origin/main.
 # Re-running for a version that's already released replaces its assets (e.g. to swap in a notarized build).
 # Needs: a "Developer ID Application" certificate, the Sparkle EdDSA key in the login keychain
 # (account io.github.bubb4rd.GlassUsage), an authenticated `gh` with push access to bubb4rd/homebrew-tap,
@@ -17,7 +19,14 @@ REPO="bubb4rd/GlassUsage"
 TAP="bubb4rd/homebrew-tap"
 BUNDLE_ID="io.github.bubb4rd.GlassUsage"
 NOTARIZE=1
-[[ "${1:-}" == "--no-notarize" ]] && NOTARIZE=0
+HOTFIX=0
+for arg in "$@"; do
+  case "$arg" in
+    --no-notarize) NOTARIZE=0 ;;
+    --hotfix) HOTFIX=1 ;;
+    *) echo "Unknown option: $arg" >&2; exit 1 ;;
+  esac
+done
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)"
 BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Support/Info.plist)"
 TAG="v$VERSION"
@@ -25,6 +34,20 @@ PROFILE="${NOTARY_PROFILE:-notary}"
 IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)}"
 [[ -n "$IDENTITY" ]] || { echo "No Developer ID Application certificate found" >&2; exit 1; }
 [[ -z "$(git status --porcelain)" ]] || { echo "Working tree is dirty; commit first" >&2; exit 1; }
+
+# Releases ship from main only, matching origin/main, so what users get is what's pushed.
+[[ "$(git symbolic-ref --short -q HEAD)" == main ]] || { echo "Release from main (fast-forward it to dev first)" >&2; exit 1; }
+git fetch -q origin main
+[[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || { echo "main and origin/main differ; push or pull first" >&2; exit 1; }
+
+# At most one release a day; urgent fixes pass --hotfix. Re-running an existing release is always allowed.
+if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && (( ! HOTFIX )); then
+  LAST="$(git for-each-ref --sort=-creatordate --count=1 --format='%(refname:short) %(creatordate:unix)' 'refs/tags/v*')"
+  if [[ -n "$LAST" ]] && (( $(date +%s) - ${LAST#* } < 86400 )); then
+    echo "${LAST% *} shipped under 24 hours ago. Let changes collect on dev, or pass --hotfix for an urgent fix." >&2
+    exit 1
+  fi
+fi
 
 SIGN_IDENTITY="$IDENTITY" Scripts/build-app.sh
 

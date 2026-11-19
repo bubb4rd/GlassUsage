@@ -1,10 +1,12 @@
 # Releasing
 
-Releases are cut from a Mac with the signing credentials. One command builds and ships everything:
+Releases are cut from `main` on a Mac with the signing credentials. Work collects on `dev`, and `main` only moves on release day (see [Cadence](#cadence)). One command builds and ships everything:
 
 ```sh
-# 1. Bump CFBundleShortVersionString and CFBundleVersion in Support/Info.plist, then commit.
-# 2. Release:
+# 1. On dev: bump CFBundleShortVersionString and CFBundleVersion in Support/Info.plist, then commit.
+# 2. Move main up to dev and push both:
+git checkout main && git merge --ff-only dev && git push origin main dev
+# 3. Release:
 Scripts/release.sh
 ```
 
@@ -19,6 +21,8 @@ Scripts/release.sh
 
 `--no-notarize` skips step 2. Gatekeeper then asks users to approve the first launch.
 
+`--hotfix` allows a release within 24 hours of the previous one. Without it the script refuses, and it always refuses to run off `main` or when `main` differs from `origin/main`.
+
 The README never names a version: its badge and download links point at the latest release, so a release needs no README edit.
 
 ## Versioning
@@ -26,6 +30,15 @@ The README never names a version: its badge and download links point at the late
 From 1.6.0 on, the middle number moves only for headline releases: a new area of the app or a change existing users have to relearn. Everything else, features included, bumps the last number: 1.6.0, 1.6.1, 1.6.2… It can climb as high as it needs to, and after 1.9 comes 1.10, so no number needs padding. 2.0 is for a break, such as dropping a macOS version.
 
 `CFBundleVersion` is a separate build number that goes up by one with every release whatever the version, since it's what Sparkle compares.
+
+## Cadence
+
+Every release puts an update prompt in front of every user, so changes ship in batches, not one release per change.
+
+- **Weekly train:** feature branches merge into `dev` when they're done. On Tuesday, if `dev` has something a user would notice, fast-forward `main` to it and release one patch. If nothing is user-facing, there's no release that week.
+- **Hotfix:** crashes, wrong numbers and broken updates ship the same day. Branch from `main`, fix, fast-forward `main` to the fix, run `Scripts/release.sh --hotfix`, then merge `main` back into `dev`.
+- **Headline (1.x.0):** planned ahead. Its feature branch merges into `dev` only once it's finished, then rides the next train.
+- **Freeze:** no trains over holidays or while away. Hotfixes still ship.
 
 ## How updates reach users
 
