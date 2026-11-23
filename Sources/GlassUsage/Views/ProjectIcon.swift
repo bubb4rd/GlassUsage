@@ -9,13 +9,14 @@ struct ProjectIcon: View {
 
     @Environment(\.appSettings) private var settings
     private var store: ProjectIconStore { .shared }
-    private var mayRead: Bool { settings?.readProtectedFolders == true || !ProjectIcons.isProtected(project.path) }
+    private var readProtected: Bool { settings?.readProtectedFolders == true }
+    private var mayRead: Bool { readProtected || !ProjectIcons.isProtected(project.path) }
 
     var body: some View {
         content
             .frame(width: size, height: size)
             .accessibilityHidden(true)
-            .task(id: "\(project.path)|\(mayRead)") { if mayRead { store.load(project.path) } }
+            .task(id: "\(project.path)|\(readProtected)") { if mayRead { store.load(project.path, readProtected: readProtected) } }
     }
 
     @ViewBuilder private var content: some View {
@@ -68,12 +69,17 @@ extension EnvironmentValues {
     static let shared = ProjectIconStore()
 
     private(set) var images: [String: CGImage] = [:]
-    @ObservationIgnored private var requested: Set<String> = []
+    /// Highest `readProtected` level already searched per project path, so enabling protected folders re-checks.
+    @ObservationIgnored private var requested: [String: Bool] = [:]
 
-    func load(_ path: String) {
-        guard !path.isEmpty, requested.insert(path).inserted else { return }
+    func load(_ path: String, readProtected: Bool) {
+        guard !path.isEmpty else { return }
+        if let previous = requested[path], previous || !readProtected { return }
+        requested[path] = readProtected
         Task {
-            let image = await Task.detached(priority: .utility) { ProjectIcons.image(forProject: path) }.value
+            let image = await Task.detached(priority: .utility) {
+                ProjectIcons.image(forProject: path, readProtected: readProtected)
+            }.value
             guard let image else { return }
             withAnimation(.easeOut(duration: 0.2)) { images[path] = image }
         }

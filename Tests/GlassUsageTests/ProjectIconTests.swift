@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import Testing
 @testable import GlassUsage
 
@@ -63,5 +64,34 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
 
         #expect(ProjectIcons.candidates(in: root).map(\.lastPathComponent) == ["big.png", "AppIcon.icns"])
+    }
+
+    @Test func t3ProjectIconResolvesRelativeAndAbsolutePaths() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "ProjectIconT3-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let dbURL = dir.appending(path: "statev2.sqlite")
+        var db: OpaquePointer?
+        #expect(sqlite3_open(dbURL.path, &db) == SQLITE_OK)
+        let setup = """
+        CREATE TABLE projection_projects (
+            project_id TEXT PRIMARY KEY,
+            workspace_root TEXT NOT NULL,
+            favicon_path TEXT,
+            updated_at TEXT NOT NULL,
+            deleted_at TEXT
+        );
+        INSERT INTO projection_projects VALUES ('1', '/work/alpha', 'docs/brand/mark.svg', '2026-11-23T00:00:00Z', NULL);
+        INSERT INTO projection_projects VALUES ('2', '/work/beta', '/custom/icon.png', '2026-11-23T00:00:00Z', NULL);
+        INSERT INTO projection_projects VALUES ('3', '/work/deleted', '/custom/old.png', '2026-11-23T00:00:00Z', '2026-11-23T01:00:00Z');
+        """
+        #expect(sqlite3_exec(db, setup, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+
+        #expect(ProjectIcons.t3IconURL(forProject: "/work/alpha", database: dbURL)?.path == "/work/alpha/docs/brand/mark.svg")
+        #expect(ProjectIcons.t3IconURL(forProject: "/work/beta", database: dbURL)?.path == "/custom/icon.png")
+        #expect(ProjectIcons.t3IconURL(forProject: "/work/deleted", database: dbURL) == nil)
+        #expect(ProjectIcons.t3IconURL(forProject: "/work/missing", database: dbURL) == nil)
     }
 }

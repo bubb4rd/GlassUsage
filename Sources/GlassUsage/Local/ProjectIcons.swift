@@ -1,8 +1,9 @@
 import AppKit
 import CryptoKit
+import SQLite3
 
-/// Finds a project's own logo in its folder: app icons first, then web icons, logos and favicons.
-/// Read-only and bounded: a few levels deep, skipping dependencies and build output.
+/// Finds a project's own logo: any custom icon set for it in T3 Code first, then app icons, web icons,
+/// logos and favicons inside its folder. Read-only and bounded: a few levels deep, skipping dependencies and build output.
 nonisolated enum ProjectIcons {
     /// Icon files in `folder`, best first: by kind, then by depth so a project's own icon beats a nested one.
     static func candidates(in folder: URL) -> [URL] {
@@ -34,13 +35,65 @@ nonisolated enum ProjectIcons {
     }
 
     /// The first candidate that loads and isn't a framework's stock icon, drawn into a square of `pixels`.
-    static func image(forProject path: String, pixels: Int = 64) -> CGImage? {
+    /// Checks a custom icon set in T3 Code's database first (still honoring `readProtected` if that file
+    /// lives inside a folder macOS guards such as Downloads or Documents), then searches the project folder.
+    static func image(forProject path: String, pixels: Int = 64, readProtected: Bool = true,
+                      t3StateDatabase: URL = AntigravityLogs.t3HomeDirectory.appending(path: "userdata/statev2.sqlite")) -> CGImage? {
         guard !path.isEmpty else { return nil }
+        if let custom = t3IconURL(forProject: path, database: t3StateDatabase),
+           readProtected || !isProtected(custom.path),
+           let data = try? Data(contentsOf: custom),
+           let image = NSImage(data: data),
+           let thumbnail = thumbnail(image, pixels: pixels) {
+            return thumbnail
+        }
         for url in candidates(in: URL(filePath: path, directoryHint: .isDirectory)) {
             guard let data = try? Data(contentsOf: url), !stockIcons.contains(sha256(data)) else { continue }
             if let image = NSImage(data: data), let thumbnail = thumbnail(image, pixels: pixels) { return thumbnail }
         }
         return nil
+    }
+
+    /// Custom project icon (`favicon_path`) stored by T3 Code in `projection_projects`, resolved against `workspace_root`
+    /// when relative. Read-only; returns nil when T3 Code isn't installed or the project has no custom icon.
+    static func t3IconURL(forProject path: String,
+                          database: URL = AntigravityLogs.t3HomeDirectory.appending(path: "userdata/statev2.sqlite"),
+                          home: URL = URL.homeDirectory) -> URL? {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: database.path) else { return nil }
+        let hasLog = fm.fileExists(atPath: database.path + "-wal")
+        var components = URLComponents(url: database, resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: hasLog ? "mode" : "immutable", value: hasLog ? "ro" : "1")]
+        guard let uri = components?.string else { return nil }
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else {
+            sqlite3_close(db)
+            return nil
+        }
+        defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 1000)
+
+        let normalized = URL(filePath: path).standardizedFileURL.path
+        let sql = """
+            SELECT favicon_path FROM projection_projects
+            WHERE workspace_root = ? AND deleted_at IS NULL AND favicon_path IS NOT NULL AND favicon_path != ''
+            ORDER BY updated_at DESC LIMIT 1
+            """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else { return nil }
+        defer { sqlite3_finalize(statement) }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, normalized, -1, transient)
+        guard sqlite3_step(statement) == SQLITE_ROW, let raw = sqlite3_column_text(statement, 0) else { return nil }
+        let favicon = String(cString: raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !favicon.isEmpty else { return nil }
+        if favicon.hasPrefix("/") {
+            return URL(filePath: favicon).standardizedFileURL
+        }
+        if favicon.hasPrefix("~/") {
+            return home.appending(path: String(favicon.dropFirst(2))).standardizedFileURL
+        }
+        return URL(filePath: normalized, directoryHint: .isDirectory).appending(path: favicon).standardizedFileURL
     }
 
     /// Inside a folder macOS guards with a permission prompt: Documents, Desktop, Downloads, iCloud Drive,

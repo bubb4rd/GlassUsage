@@ -198,6 +198,20 @@ import Testing
                 "falls back to 1.1")
         #expect(AntigravityLogs.workspace(ProtoMessage(bytes("3a1568747470733a2f2f6578616d706c652e636f6d2f78"))) == nil,
                 "only file URIs are folders")
+
+        func field7(_ uri: String) -> [UInt8] {
+            let utf8 = Array(uri.utf8)
+            return [0x3a, UInt8(utf8.count)] + utf8
+        }
+        let attachments = "/Users/me/.t3/userdata/attachments"
+        let projectFirst = field7("file:///work/app") + field7("file://\(attachments)")
+        #expect(AntigravityLogs.workspace(ProtoMessage(ArraySlice(projectFirst)), attachmentsPath: attachments) == "/work/app",
+                "skips T3 Code's trailing attachments workspace")
+        let attachmentsFirst = field7("file://\(attachments)") + field7("file:///work/app")
+        #expect(AntigravityLogs.workspace(ProtoMessage(ArraySlice(attachmentsFirst)), attachmentsPath: attachments) == "/work/app",
+                "skips T3 Code's attachments workspace regardless of order")
+        let attachmentsOnly = field7("file://\(attachments)")
+        #expect(AntigravityLogs.workspace(ProtoMessage(ArraySlice(attachmentsOnly)), attachmentsPath: attachments) == nil)
     }
 
     @Test func museModelsPriceWithoutTheCatalog() throws {

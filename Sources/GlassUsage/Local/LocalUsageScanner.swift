@@ -25,7 +25,8 @@ actor LocalUsageScanner {
     private struct StoredFile: Codable {
         /// 2: entries carry their project folder. 3: Antigravity and Muse Code entries do too.
         /// 4: the Antigravity desktop app's placeholder models are named; its source is `antigravity`.
-        static let currentVersion = 4
+        /// 5: Antigravity conversations ignore T3 Code's attachments workspace so they credit their real project.
+        static let currentVersion = 5
         var version = currentVersion
         let path: String
         let state: FileState

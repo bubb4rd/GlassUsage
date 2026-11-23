@@ -301,9 +301,13 @@ nonisolated enum ProjectNames {
         })
     }
 
-    /// Scratch folders scripts run agents in (`$TMPDIR`, `/tmp`) aren't projects anyone would recognise.
-    static func isTemporary(_ path: String) -> Bool {
+    /// Scratch folders scripts and hosts run agents in (`$TMPDIR`, `/tmp`, T3 Code's `scratch/` for "No project"
+    /// threads) aren't projects anyone would recognise.
+    static func isTemporary(_ path: String, t3Scratch: String = AntigravityLogs.t3ScratchPath,
+                            t3Attachments: String = AntigravityLogs.t3AttachmentsPath) -> Bool {
         path == "/tmp" || path == "/private/tmp"
+            || path == t3Scratch || path.hasPrefix(t3Scratch + "/")
+            || path == t3Attachments || path.hasPrefix(t3Attachments + "/")
             || ["/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/"].contains { path.hasPrefix($0) }
     }
 }

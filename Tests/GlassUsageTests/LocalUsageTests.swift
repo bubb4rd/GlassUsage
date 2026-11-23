@@ -90,12 +90,17 @@ import Testing
     }
 
     @Test func smallAndTemporaryProjectsFoldIntoOtherLast() {
+        let scratch = AntigravityLogs.t3ScratchPath
+        #expect(!scratch.hasSuffix("/"), "t3ScratchPath must not have a trailing slash")
+        #expect(!AntigravityLogs.t3AttachmentsPath.hasSuffix("/"), "t3AttachmentsPath must not have a trailing slash")
+        #expect(ProjectNames.isTemporary(scratch + "/2026-11-23-diagnose-wifi"))
         let projects = projectSummary([
             ("/w/a", 3000), ("/w/b", 2000), ("/w/c", 1000), ("/w/tiny", 10), (nil, 500),
             ("/private/var/folders/68/x/T/resume-llm", 400), ("/tmp/run", 100),
+            ("\(scratch)/2026-11-23-diagnose-wifi", 250),
         ])
-        #expect(projects.map(\.name) == ["a", "b", "c", "Other"], "below 1% and temporary folders aren't projects")
-        #expect(projects.last?.tokens.total == 1010, "Other keeps their tokens so the rows add up")
+        #expect(projects.map(\.name) == ["a", "b", "c", "Other"], "below 1%, temporary and T3 scratch folders fold into Other")
+        #expect(projects.last?.tokens.total == 1260, "Other keeps their tokens so the rows add up")
     }
 
     @Test func projectRowsCapAtFiveIncludingOther() {

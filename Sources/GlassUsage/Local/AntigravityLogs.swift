@@ -11,12 +11,26 @@ import SQLite3
 /// `trajectory_metadata_blob.data` holds the conversation's start time (2) and workspace URI (7, also 1.1).
 /// Copies of one call share a response id, so each is counted once.
 nonisolated enum AntigravityLogs {
+    /// T3 Code's home directory (`$T3CODE_HOME`, defaulting to `~/.t3`).
+    static var t3HomeDirectory: URL {
+        ProcessInfo.processInfo.environment["T3CODE_HOME"].map { URL(fileURLWithPath: $0) }
+            ?? URL.homeDirectory.appending(path: ".t3")
+    }
+
     /// T3 Code runs Antigravity with `GEMINI_HOME` at `<T3 home>/userdata/providers/antigravity/<sha256(instance id)>`,
     /// one profile per account, each keeping its history under `antigravity-acp/`.
     static var t3ProfilesDirectory: URL {
-        let t3Home = ProcessInfo.processInfo.environment["T3CODE_HOME"].map { URL(fileURLWithPath: $0) }
-            ?? URL.homeDirectory.appending(path: ".t3")
-        return t3Home.appending(path: "userdata/providers/antigravity", directoryHint: .isDirectory)
+        t3HomeDirectory.appending(path: "userdata/providers/antigravity", directoryHint: .isDirectory)
+    }
+
+    /// Auxiliary folder T3 Code mounts alongside the project so Antigravity can read pasted attachments.
+    static var t3AttachmentsPath: String {
+        t3HomeDirectory.appending(path: "userdata/attachments").standardizedFileURL.path
+    }
+
+    /// Dated scratch folders T3 Code creates for "No project" threads.
+    static var t3ScratchPath: String {
+        t3HomeDirectory.appending(path: "scratch").standardizedFileURL.path
     }
 
     /// The Antigravity CLI, desktop app and IDE share one conversation format, each in its own app data folder
@@ -124,10 +138,15 @@ nonisolated enum AntigravityLogs {
     }
 
     /// The folder a conversation ran in, from its `trajectory_metadata_blob` row.
-    static func workspace(_ metadata: ProtoMessage) -> String? {
-        guard let uri = metadata.string(7) ?? metadata.message(1)?.string(1),
-              let url = URL(string: uri), url.isFileURL else { return nil }
-        return url.path
+    /// Field 7 (and fallback 1[].1) can repeat when a host mounts an auxiliary folder such as T3 Code's
+    /// `userdata/attachments` alongside the project; take the first real project folder.
+    static func workspace(_ metadata: ProtoMessage, attachmentsPath: String = t3AttachmentsPath) -> String? {
+        let uris = metadata.strings(7) + metadata.messages(1).compactMap { $0.string(1) }
+        let paths = uris.compactMap { uri -> String? in
+            guard let url = URL(string: uri), url.isFileURL else { return nil }
+            return url.standardizedFileURL.path
+        }
+        return paths.first { $0 != attachmentsPath && !$0.hasPrefix(attachmentsPath + "/") }
     }
 
     /// One `gen_metadata.data` blob.
@@ -272,6 +291,13 @@ nonisolated struct ProtoMessage {
 
     func string(_ field: Int) -> String? {
         message(field).map { String(decoding: $0.bytes, as: UTF8.self) }.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    func strings(_ field: Int) -> [String] {
+        messages(field).compactMap {
+            let text = String(decoding: $0.bytes, as: UTF8.self)
+            return text.isEmpty ? nil : text
+        }
     }
 
     private func readVarint(_ i: inout ArraySlice<UInt8>.Index) -> UInt64? {
