@@ -185,7 +185,7 @@ Bug reports and pull requests are welcome. Please include your macOS version and
 - Visual language: [TokenHell](https://github.com/ghostpengu/tokenhell) by ghostpengu
 - Log parsing approach: [ccusage](https://github.com/ryoppippi/ccusage); prices: [LiteLLM](https://github.com/BerriAI/litellm)
 - Updates: [Sparkle](https://sparkle-project.org)
-- Provider marks: [Simple Icons](https://simpleicons.org) (CC0). Claude is a trademark of Anthropic; Codex and the OpenAI logo are trademarks of OpenAI; Google and Antigravity are trademarks of Google; Meta and Muse are trademarks of Meta.
+- Provider marks: [Simple Icons](https://simpleicons.org) (CC0) and the Gemini sparkle. Claude is a trademark of Anthropic; Codex and the OpenAI logo are trademarks of OpenAI; Google, Gemini and Antigravity are trademarks of Google; Meta and Muse are trademarks of Meta.
 
 ## License
 
