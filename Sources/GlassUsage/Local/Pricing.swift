@@ -128,6 +128,7 @@ nonisolated struct PricingTable: Codable, Sendable {
             "muse-wonder-1.0": p(4, 20, 0.2, 4, 4),
             "muse-ember-1.0": p(0.1, 0.5, 0.004, 0.1, 0.1),
             // Google bills context caching by storage time, not per written token, so writes bill as input.
+            "gemini-4-neon": p(3, 15, 0.15, 3, 3),
             "gemini-4-hydrogen": p(1.5, 7.5, 0.075, 1.5, 1.5),
             "gemini-4-argon": p(2, 10, 0.1, 2, 2),
             "gemini-4-carbon": p(2, 10, 0.1, 2, 2),

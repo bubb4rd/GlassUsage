@@ -175,12 +175,12 @@ nonisolated enum AntigravityLogs {
             guard var model = raw?.trimmingCharacters(in: .whitespaces).lowercased(), !model.isEmpty else { return nil }
             model = model.replacing(/\s*\(([^)]*)\)$/) { "-\($0.1)" }.replacing(/\s+/, with: "-")
             if model.hasPrefix("claude-") {
-                model = model.replacing(/^claude-(\d+(?:\.\d+)?)-(sonnet|opus|haiku)/) { "claude-\($0.2)-\($0.1)" }
+                model = model.replacing(/^claude-(\d+(?:\.\d+)?)-(fable|sonnet|opus|haiku)/) { "claude-\($0.2)-\($0.1)" }
                     .replacing(".", with: "-")
             }
             return model
         }
-        return candidates.first { $0.contains(/^(?:gemini-\d|claude-(?:sonnet|opus|haiku)-\d|gpt-)/) }
+        return candidates.first { $0.contains(/^(?:gemini-\d|claude-(?:fable|sonnet|opus|haiku)-\d|gpt-)/) }
             ?? placeholder.flatMap { placeholderModels[$0] }
             ?? candidates.first { !$0.hasPrefix("model_") && !$0.hasPrefix("model-") }
     }

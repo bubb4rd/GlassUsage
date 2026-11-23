@@ -45,16 +45,25 @@ nonisolated enum ClaudeProvider {
            let credentials = parseCredentials(Data(output.stdout.utf8)) {
             return credentials
         }
-        if let data = try? Data(contentsOf: credentialsFileURL), let credentials = parseCredentials(data) {
-            return credentials
+        for url in credentialsFileURLs() {
+            if let data = try? Data(contentsOf: url), let credentials = parseCredentials(data) {
+                return credentials
+            }
         }
         throw ProviderError.notSignedIn(.claude)
     }
 
-    private static var credentialsFileURL: URL {
-        let configDir = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"].map { URL(fileURLWithPath: $0) }
-            ?? URL.homeDirectory.appending(path: ".claude")
-        return configDir.appending(path: ".credentials.json")
+    static func credentialsFileURLs(configDir: String? = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"],
+                                    home: URL = URL.homeDirectory) -> [URL] {
+        let dirs = configDir?
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .map { URL(fileURLWithPath: $0) }
+        if let dirs, !dirs.isEmpty {
+            return dirs.map { $0.appending(path: ".credentials.json") }
+        }
+        return [home.appending(path: ".claude/.credentials.json")]
     }
 
     private static func parseCredentials(_ data: Data) -> Credentials? {

@@ -84,6 +84,7 @@ import Testing
 
     @Test func antigravityDisplayNamesBecomeCatalogIDs() {
         #expect(AntigravityLogs.modelName(id: nil, name: "Claude 5.5 Opus (Thinking)") == "claude-opus-5-5-thinking")
+        #expect(AntigravityLogs.modelName(id: nil, name: "Claude 5.2 Fable (Thinking)") == "claude-fable-5-2-thinking")
         #expect(AntigravityLogs.modelName(id: "MODEL_PLACEHOLDER_M525", name: "Gemini 3.8 Flash (Low)") == "gemini-3.8-flash-low")
         #expect(AntigravityLogs.modelName(id: "gemini-3.8-flash-n", name: "Gemini 3.8 Flash (Low)") == "gemini-3.8-flash-n")
     }
@@ -98,8 +99,11 @@ import Testing
     }
 
     @Test func antigravityFlashPricesWithoutTheCatalog() throws {
-        let price = try #require(PricingTable.builtIn.price(for: "gemini-3.8-flash-n"))
-        #expect(price.output == 3.75 / 1e6)
+        let flash = try #require(PricingTable.builtIn.price(for: "gemini-3.8-flash-n"))
+        #expect(flash.output == 3.75 / 1e6)
+        let neon = try #require(PricingTable.builtIn.price(for: "gemini-4-neon"))
+        #expect(neon.input == 3 / 1e6)
+        #expect(neon.output == 15 / 1e6)
     }
 
     @Test func geminiFourPricesFromItsProviderPrefixedCatalogEntry() throws {
@@ -220,6 +224,14 @@ import Testing
         {"five_hour": null, "seven_day": {"utilization": 3, "resets_at": "2026-11-20T08:00:00Z"}}
         """), plan: nil, fetchedAt: .now)
         #expect(snapshot.windows.map(\.key) == ["weekly"])
+    }
+
+    @Test func claudeCredentialsChecksEveryConfigDir() {
+        let home = URL(fileURLWithPath: "/Users/me")
+        #expect(ClaudeProvider.credentialsFileURLs(configDir: nil, home: home).map(\.path)
+            == ["/Users/me/.claude/.credentials.json"])
+        #expect(ClaudeProvider.credentialsFileURLs(configDir: "/work/a, /work/b ,", home: home).map(\.path)
+            == ["/work/a/.credentials.json", "/work/b/.credentials.json"])
     }
 
     @Test func codexWindowsSortShortestFirst() throws {
