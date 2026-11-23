@@ -3,13 +3,13 @@
   <channel>
     <title>GlassUsage</title>
     <item>
-      <title>Version 1.6.4</title>
-      <pubDate>Thu, 19 Nov 2026 15:45:41 -0600</pubDate>
-      <sparkle:version>31</sparkle:version>
-      <sparkle:shortVersionString>1.6.4</sparkle:shortVersionString>
+      <title>Version 1.6.5</title>
+      <pubDate>Mon, 23 Nov 2026 15:20:41 -0600</pubDate>
+      <sparkle:version>32</sparkle:version>
+      <sparkle:shortVersionString>1.6.5</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
-      <sparkle:fullReleaseNotesLink>https://github.com/bubb4rd/GlassUsage/releases/tag/v1.6.4</sparkle:fullReleaseNotesLink>
-      <enclosure url="https://github.com/bubb4rd/GlassUsage/releases/download/v1.6.4/GlassUsage-1.6.4.zip" sparkle:edSignature="buCLIm1+s3Y0NRnJKTotvsAbOH56YO7urMUtcwYiLdPNjkcVn1Vb8Ul38K72oa199sihvPVgyW2cc0Fmw2FGCw==" length="4686235" type="application/octet-stream"/>
+      <sparkle:fullReleaseNotesLink>https://github.com/bubb4rd/GlassUsage/releases/tag/v1.6.5</sparkle:fullReleaseNotesLink>
+      <enclosure url="https://github.com/bubb4rd/GlassUsage/releases/download/v1.6.5/GlassUsage-1.6.5.zip" sparkle:edSignature="dAHURYcYv7ZfXY3BX3UySOZGAiXW+0NVPFJtThzanXwO7LSqfHLrACNfzDqjd/teQK+6EMQh/V1H48RAbHV5Ag==" length="4719980" type="application/octet-stream"/>
     </item>
   </channel>
 </rss>
