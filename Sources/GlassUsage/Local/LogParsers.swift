@@ -66,10 +66,14 @@ nonisolated enum LogParsers {
         switch vendor {
         case "anthropic": return .claude
         case "openai-codex", "openai": return .codex
+        case "google", "google-gemini-cli", "google-antigravity", "gemini": return .antigravity
+        case "meta", "muse": return .muse
         default:
             let id = model.lowercased()
             if id.hasPrefix("claude") { return .claude }
             if id.hasPrefix("gpt-") || id.contains("codex") { return .codex }
+            if id.hasPrefix("gemini-") { return .antigravity }
+            if id.hasPrefix("muse-") { return .muse }
             return nil
         }
     }

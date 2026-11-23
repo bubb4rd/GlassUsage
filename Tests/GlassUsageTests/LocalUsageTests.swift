@@ -63,6 +63,21 @@ import Testing
         #expect(entry.project == "/work/app")
     }
 
+    @Test func ompCountsGeminiAndMuseMessages() throws {
+        var project: String?
+        let gemini = try #require(LogParsers.omp(try json("""
+        {"type":"message","id":"m1","timestamp":"2026-11-16T10:00:00Z","message":{"role":"assistant","provider":"google-antigravity",\
+        "model":"gemini-4-neon","usage":{"input":100,"output":25,"cacheRead":0,"cacheWrite":0}}}
+        """), project: &project))
+        #expect(gemini.provider == .antigravity)
+
+        let muse = try #require(LogParsers.omp(try json("""
+        {"type":"message","id":"m2","timestamp":"2026-11-16T10:01:00Z","message":{"role":"assistant","provider":"cursor",\
+        "model":"muse-spark-1.3","usage":{"input":80,"output":20,"cacheRead":0,"cacheWrite":0}}}
+        """), project: &project))
+        #expect(muse.provider == .muse)
+    }
+
     private func projectSummary(_ projects: [(String?, Int)]) -> [ProjectSpend] {
         let now = Date.now
         let entries = projects.enumerated().map { index, project in
