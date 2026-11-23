@@ -140,8 +140,10 @@ private struct SpendLedger: View {
                                progress: grown || reduceMotion ? 1 : 0,
                                highlighted: hovered.map { $0 == day.id }, seed: index)
                             .animation(Motion.curve(grown, Motion.draw, delay: base + 0.05 + stagger * Double(index)), value: grown)
+                            .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: range)
                             .frame(maxWidth: .infinity, maxHeight: Self.chartHeight, alignment: .bottom)
                             .opacity(day.inRange ? 1 : 0.55)
+                            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: day.inRange)
                             .contentShape(Rectangle())
                             .onHover { inside in
                                 if inside { hovered = day.id } else if hovered == day.id { hovered = nil }
@@ -157,6 +159,7 @@ private struct SpendLedger: View {
                     .stroke(Color.primary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
                     .frame(height: 1)
                     .offset(y: Self.chartHeight * (1 - average / peak) - 0.5)
+                    .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: average / peak)
                     .allowsHitTesting(false)
             }
             .padding(.top, 6)
@@ -348,6 +351,7 @@ private struct SpendCalendar: View {
                 ForEach(Array(week.slots.enumerated()), id: \.offset) { offset, slot in
                     cell(slot, byCost: byCost, peak: peak, height: cellHeight)
                         .frame(width: Self.cellWidth, height: cellHeight)
+                        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: range)
                         .scaleEffect(grown || reduceMotion ? 1 : 0.4)
                         .opacity(grown ? 1 : 0)
                         .animation(Motion.curve(grown, Motion.enter, delay: base + 0.04 + 0.025 * Double(index + offset)),
@@ -740,12 +744,12 @@ private struct ProviderShare: View {
         let byCost = summary.leadsWithCost
         let totals = summary.providers.map { (provider: $0, value: summary.total(for: $0, byCost: byCost)) }
         let sum = max(totals.reduce(0) { $0 + $1.value }, .leastNonzeroMagnitude)
-        let slices = totals.map { (color: palette.color(for: $0.provider), share: $0.value / sum) }
-        let highlighted = hovered.flatMap { summary.providers.firstIndex(of: $0) }
+        let slices = totals.map { (provider: $0.provider, share: $0.value / sum) }
+        let shares = ProviderShares(Dictionary(uniqueKeysWithValues: slices.map { ($0.provider, $0.share) }))
+        let colors = Dictionary(uniqueKeysWithValues: ProviderID.allCases.map { ($0, palette.color(for: $0)) })
         VStack(alignment: .leading, spacing: 6) {
             Revealing { shown in
-                bar(slices, highlighted: highlighted, progress: shown || reduceMotion ? 1 : 0)
-                    .animation(Motion.curve(shown, Motion.draw, delay: base + 0.05), value: shown)
+                bar(shares, colors: colors, highlighted: hovered, shown: shown)
             }
             .frame(height: fill == .dither ? Self.ditherHeight : 8)
             .contentShape(.rect)
@@ -754,10 +758,10 @@ private struct ProviderShare: View {
                 switch phase {
                 case .active(let point):
                     var edge = 0.0
-                    hovered = totals.indices.first { index in
-                        edge += slices[index].share
+                    hovered = slices.first { slice in
+                        edge += slice.share
                         return point.x / width < edge
-                    }.map { totals[$0].provider }
+                    }?.provider
                 case .ended:
                     hovered = nil
                 }
@@ -769,15 +773,20 @@ private struct ProviderShare: View {
     }
 
     @ViewBuilder
-    private func bar(_ slices: [(color: Color, share: Double)], highlighted: Int?, progress: Double) -> some View {
+    private func bar(_ shares: ProviderShares, colors: [ProviderID: Color], highlighted: ProviderID?, shown: Bool) -> some View {
+        let progress: Double = shown || reduceMotion ? 1 : 0
         if fill == .dither {
             // The texture drifts while the panel is open.
             TimelineView(.animation(minimumInterval: 1 / 12, paused: !revealed || reduceMotion)) { timeline in
-                DitherShareBar(slices: slices, progress: progress, highlighted: highlighted, t: Dither.time(timeline.date),
-                               live: revealed && !reduceMotion)
+                DitherShareBar(shares: shares, colors: colors, progress: progress, highlighted: highlighted,
+                               t: Dither.time(timeline.date), live: revealed && !reduceMotion)
+                    .animation(Motion.curve(shown, Motion.draw, delay: base + 0.05), value: shown)
+                    .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: shares)
             }
         } else {
-            SolidShareBar(slices: slices, progress: progress, highlighted: highlighted)
+            SolidShareBar(shares: shares, colors: colors, progress: progress, highlighted: highlighted)
+                .animation(Motion.curve(shown, Motion.draw, delay: base + 0.05), value: shown)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: shares)
         }
     }
 
@@ -798,7 +807,10 @@ private struct ProviderShare: View {
                             }
                             Text(item.provider.displayName).fontWeight(.medium).lineLimit(1)
                             Spacer(minLength: 2)
-                            Text(figure(item.value, byCost: byCost)).foregroundStyle(.secondary)
+                            Text(figure(item.value, byCost: byCost))
+                                .foregroundStyle(.secondary)
+                                .contentTransition(.numericText(value: item.value))
+                                .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: item.value)
                         }
                         .padding(.horizontal, 5)
                         .frame(height: 24)
@@ -826,13 +838,17 @@ private struct ProviderShare: View {
 
 /// The spend bar in flat color: a capsule split into provider slices that grow in from the leading edge.
 private struct SolidShareBar: View, Animatable {
-    let slices: [(color: Color, share: Double)]
+    var shares: ProviderShares
+    let colors: [ProviderID: Color]
     var progress: Double
-    let highlighted: Int?
+    let highlighted: ProviderID?
 
-    var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
+    var animatableData: AnimatablePair<Double, ProviderShares> {
+        get { AnimatablePair(progress, shares) }
+        set {
+            progress = newValue.first
+            shares = newValue.second
+        }
     }
 
     var body: some View {
@@ -840,10 +856,17 @@ private struct SolidShareBar: View, Animatable {
             var context = context
             context.clip(to: Capsule().path(in: CGRect(origin: .zero, size: size)))
             context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.track))
+            let active = ProviderID.allCases.compactMap { provider -> (provider: ProviderID, color: Color, share: Double)? in
+                let share = max(shares[provider], 0)
+                guard share > 0.0001, let color = colors[provider] else { return nil }
+                return (provider, color, share)
+            }
+            let totalShare = active.reduce(0.0) { $0 + $1.share }
+            guard totalShare > 0 else { return }
             var x: CGFloat = 0
-            for (index, slice) in slices.enumerated() {
-                let width = size.width * slice.share * progress
-                let dim = highlighted == nil || highlighted == index ? 1 : 0.35
+            for slice in active {
+                let width = size.width * (slice.share / totalShare) * progress
+                let dim = highlighted == nil || highlighted == slice.provider ? 1 : 0.35
                 context.fill(Path(CGRect(x: x, y: 0, width: max(width - 1, 0), height: size.height)),
                              with: .color(slice.color.opacity(dim)))
                 x += width

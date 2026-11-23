@@ -175,7 +175,7 @@ struct DitherRing: View, Animatable {
 struct DitherColumn: View, Animatable {
     /// Provider colors with their share of the column, bottom of the stack first.
     let slices: [(color: Color, share: Double)]
-    let height: CGFloat
+    var height: CGFloat
     /// 0 folds the column to its baseline, 1 draws it at full height.
     var progress: Double
     /// Nil while no day is hovered; else whether this one is.
@@ -183,9 +183,12 @@ struct DitherColumn: View, Animatable {
     /// Varies the texture from column to column.
     let seed: Int
 
-    var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
+    var animatableData: AnimatablePair<Double, CGFloat> {
+        get { AnimatablePair(progress, height) }
+        set {
+            progress = newValue.first
+            height = newValue.second
+        }
     }
 
     var body: some View {
@@ -259,21 +262,81 @@ struct DitherLine: View, Animatable {
     }
 }
 
+/// Animatable share per `ProviderID` so switching ranges slides every provider's slice smoothly,
+/// including providers entering or leaving from 0.
+struct ProviderShares: VectorArithmetic, Equatable {
+    var claude: Double = 0
+    var codex: Double = 0
+    var antigravity: Double = 0
+    var muse: Double = 0
+
+    init(_ values: [ProviderID: Double] = [:]) {
+        claude = values[.claude] ?? 0
+        codex = values[.codex] ?? 0
+        antigravity = values[.antigravity] ?? 0
+        muse = values[.muse] ?? 0
+    }
+
+    subscript(_ provider: ProviderID) -> Double {
+        switch provider {
+        case .claude: claude
+        case .codex: codex
+        case .antigravity: antigravity
+        case .muse: muse
+        }
+    }
+
+    static var zero: Self { Self() }
+
+    static func + (lhs: Self, rhs: Self) -> Self {
+        var result = lhs
+        result.claude += rhs.claude
+        result.codex += rhs.codex
+        result.antigravity += rhs.antigravity
+        result.muse += rhs.muse
+        return result
+    }
+
+    static func - (lhs: Self, rhs: Self) -> Self {
+        var result = lhs
+        result.claude -= rhs.claude
+        result.codex -= rhs.codex
+        result.antigravity -= rhs.antigravity
+        result.muse -= rhs.muse
+        return result
+    }
+
+    mutating func scale(by rhs: Double) {
+        claude *= rhs
+        codex *= rhs
+        antigravity *= rhs
+        muse *= rhs
+    }
+
+    var magnitudeSquared: Double {
+        claude * claude + codex * codex + antigravity * antigravity + muse * muse
+    }
+}
+
 /// The spend bar in cells: each provider's slice tinted, outlined and lit in a drifting dither, densest along the
 /// bottom and its edges, with faint dots where nothing's filled yet. While `progress` sweeps in, the leading cells
 /// run white hot. A highlighted slice lights up and the others dim.
 struct DitherShareBar: View, Animatable {
-    let slices: [(color: Color, share: Double)]
+    var shares: ProviderShares
+    let colors: [ProviderID: Color]
     var progress: Double
-    let highlighted: Int?
+    let highlighted: ProviderID?
     /// Seconds, drifting the texture.
     let t: Double
     /// While drifting, stray cells flash white.
     let live: Bool
 
-    var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
+    var animatableData: AnimatablePair<Double, ProviderShares> {
+        get { AnimatablePair(progress, shares) }
+        set {
+            progress = newValue.first
+            shares = newValue.second
+        }
     }
 
     static let pitch: CGFloat = 3.5
@@ -287,32 +350,41 @@ struct DitherShareBar: View, Animatable {
         let pitch = Self.pitch
         let columns = Int(size.width / pitch), rows = Int(size.height / pitch)
         let x0 = (size.width - CGFloat(columns) * pitch) / 2, y0 = (size.height - CGFloat(rows) * pitch) / 2
-        var bounds = [0]
-        var total = 0.0
-        for slice in slices {
-            total += slice.share
-            bounds.append(Int((total * Double(columns)).rounded()))
+        let active = ProviderID.allCases.enumerated().compactMap { index, provider -> (seed: Int, provider: ProviderID, color: Color, share: Double)? in
+            let share = max(shares[provider], 0)
+            guard share > 0.0001, let color = colors[provider] else { return nil }
+            return (index, provider, color, share)
         }
-        let head = Double(bounds.last ?? 0) * progress
+        let totalShare = active.reduce(0.0) { $0 + $1.share }
+        let scale = totalShare > 0 ? Double(columns) / totalShare : 0
+        var cursor = 0.0
+        let edges: [(start: Double, end: Double)] = active.map { slice in
+            let next = cursor + slice.share * scale
+            defer { cursor = next }
+            return (cursor, next)
+        }
+        let head = cursor * progress
         let sweeping = progress < 1
         let outline = Self.outline(size)
         if !glow { context.stroke(outline, with: .color(.primary.opacity(0.1)), lineWidth: 1) }
         context.clip(to: outline)
-        if !glow { Self.track(context, size, from: Int(head.rounded(.up))) }
+        if !glow { Self.track(context, size, from: max(0, Int((head - 0.5).rounded(.up)))) }
 
-        for (index, slice) in slices.enumerated() {
-            let start = bounds[index], end = min(Double(bounds[index + 1]), head)
-            guard end > Double(start) else { continue }
-            let picked = highlighted == index
+        for (slice, bounds) in zip(active, edges) {
+            let start = bounds.start, end = min(bounds.end, head)
+            guard end > start else { continue }
+            let picked = highlighted == slice.provider
             let dim = highlighted == nil || picked ? 1 : 0.32
-            let rect = CGRect(x: x0 + CGFloat(start) * pitch, y: 0, width: CGFloat(end - Double(start)) * pitch, height: size.height)
+            let rect = CGRect(x: x0 + CGFloat(start) * pitch, y: 0, width: CGFloat(end - start) * pitch, height: size.height)
             if !glow { context.fill(Path(rect), with: .color(slice.color.opacity((picked ? 0.2 : 0.12) * dim))) }
-            for column in start..<Int(end.rounded(.up)) {
+            let firstCol = max(0, Int((start - 0.5).rounded(.up)))
+            let lastCol = min(columns, Int((end - 0.5).rounded(.up)))
+            for column in firstCol..<max(firstCol, lastCol) {
                 let heat = sweeping ? max(0, 1 - (head - Double(column)) / 8) : 0
                 for row in 0..<rows {
-                    var density = Dither.texture(column, row, t: t, seed: index)
+                    var density = Dither.texture(column, row, t: t, seed: slice.seed)
                     if row == rows - 1 { density += 0.75 } else if row == 0 { density += 0.45 }
-                    if column == start || column == bounds[index + 1] - 1 { density += 0.18 }
+                    if column == firstCol || column == lastCol - 1 { density += 0.18 }
                     if picked { density += 0.28 }
                     density += heat * 1.1
                     let center = CGPoint(x: x0 + (CGFloat(column) + 0.5) * pitch, y: y0 + (CGFloat(row) + 0.5) * pitch)
@@ -325,7 +397,7 @@ struct DitherShareBar: View, Animatable {
                     }
                 }
             }
-            let edge = sweeping && Double(bounds[index + 1]) > head ? slice.color.mix(with: .white, by: 0.7) : slice.color
+            let edge = sweeping && bounds.end > head ? slice.color.mix(with: .white, by: 0.7) : slice.color
             context.stroke(outline.intersection(Path(rect.insetBy(dx: 0.6, dy: 0))), with: .color(edge.opacity(0.95 * dim)),
                            lineWidth: 1.2)
         }
